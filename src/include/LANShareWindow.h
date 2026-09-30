@@ -177,6 +177,9 @@ public:
 private:
     void closeEvent(QCloseEvent *event) override;
 
+    // 统一处理拖入的文件/文件夹 URL（主窗口 dropEvent 与子控件事件过滤器共用）
+    void handleDroppedUrls(const QList<QUrl> &urls);
+
 protected:
     void resizeEvent(QResizeEvent *event);
 

@@ -30,6 +30,9 @@
 #define FS_ADD_DEVICE  1104     // 添加设备
 #define FS_MESSAGE  1105     // 消息
 #define FS_GET_NO_SYNC_MEDIA  1106     //
+// 分段并行传输：一条连接只传文件的某一段，接收端按偏移落盘。
+// 只在未加密 + 对端 DATA_VERSION_5 及以上时使用，否则自动回落到单流 FS_SHARE_FILE。
+#define FS_SHARE_SEG  1110    // 分段发送文件
 
 #define FS_DATA  1           // 数据
 #define FS_END  2            // 接收结束
@@ -68,7 +71,7 @@
 #define DEFAULT_MESSAGE_KEY "e4be1373272c69e0932651d97187b746c6725b17bbe84ad0b0fe2d4e81fc1d6c0c633d8ebd7f0fea65a57a9d5529d214"
 #define KEY "6c9b%8ErII@Rc&f"
 
-#define APP_NAME "LANShare"
+#define APP_NAME "局域网互传"
 
 #define FILE_PATH "filePath"
 // 用户名
@@ -120,12 +123,22 @@
 #define DATA_VERSION_1 1
 #define DATA_VERSION_2 2
 #define DATA_VERSION_3 3
+#define DATA_VERSION_4 4
+// v5：支持分段并行传输（FS_SHARE_SEG）。与 v1~v4 的区别只在「新协议可选」：
+// 老版本接收端收到 v5 声明后，发送端会先判断对端版本，不支持就自动回落到单流 FS_SHARE_FILE。
+#define DATA_VERSION_5 5
 #define LANSHARE_VERSION 2500117
 #define LANSHARE_VERSION_NAME "1.1"
-#define DATA_VERSION DATA_VERSION_3
-#define LANSHARE_SERVER "http://lanshares.com"
+#define DATA_VERSION DATA_VERSION_5
+#define LANSHARE_SERVER "http://fgsqw.top"
 //#define LANSHARE_SERVER "http://127.0.0.1:8881"
 #define CACHE_DIR "/.cache"
+
+// 分段并行传输：把一个文件切成几段、每段一条独立连接同时发。
+// 设为 1 即完全关闭，永远走原来的单流路径。
+#define PARALLEL_SEGS 16
+// 小于这个大小不切段：连接握手和线程开销大于收益
+#define PARALLEL_MIN_SIZE (8 * 1024 * 1024)
 
 #if defined(PLATFORM_WINDOWS)
 #if defined(RELEASE)

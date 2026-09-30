@@ -37,7 +37,7 @@ endif ()
 
 if (WIN32)
     set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
-    set(CMAKE_PREFIX_PATH C:/Qt/6.8.0/mingw_64)
+    set(CMAKE_PREFIX_PATH D:/AndroidToolchain/Qt/6.8.0/mingw_64)
     if (${CMAKE_BUILD_TYPE} MATCHES "Release")
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -mwindows")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -mwindows ")

@@ -6,6 +6,8 @@
 #include <QUuid>
 
 #include <qmimedata.h>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <vector>
 #include <utility>
 #include <QMessageBox>
@@ -38,7 +40,7 @@ LANShareWindow::LANShareWindow(QWidget *parent) : QMainWindow(parent),
                                                   ui(new Ui::LANShareWindow) {
     lanShareWindow = this;
     networkAccessManager = new QNetworkAccessManager();
-    checkVersion();
+    // checkVersion(); // 已禁用自动更新检测
     ui->setupUi(this);
     ui->chatListWidget->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     ui->chatListWidget->setSelectionMode(QAbstractItemView::NoSelection);
@@ -54,7 +56,21 @@ LANShareWindow::LANShareWindow(QWidget *parent) : QMainWindow(parent),
     ui->chatListWidget->setContextMenuPolicy(Qt::CustomContextMenu);
     ui->webService->setChecked(config.webService);
     setAcceptDrops(true);
-    setWindowIcon(QIcon(":/img/ic_launcher.png"));
+    // centralWidget 及其子控件铺满了客户区，必须让它们也接受拖放，
+    // 否则文件拖到子控件上时事件到不了主窗口的 dragEnterEvent/dropEvent。
+    if (QWidget *cw = centralWidget()) {
+        cw->setAcceptDrops(true);
+        cw->installEventFilter(this);
+        const QWidgetList children = cw->findChildren<QWidget *>();
+        for (QWidget *w : children) {
+            if (w == ui->textEdit) {
+                continue; // 输入框保持禁用拖放，避免文本拖入干扰
+            }
+            w->setAcceptDrops(true);
+            w->installEventFilter(this);
+        }
+    }
+    setWindowIcon(QIcon(":/img/app.ico"));
     setMinimumSize({600, 600});
     qRegisterMetaType<LFile *>("LFile");
     qRegisterMetaType<mlong>("mlong");
@@ -85,9 +101,8 @@ LANShareWindow::LANShareWindow(QWidget *parent) : QMainWindow(parent),
     ui->chatListWidget->scrollToBottom();
     connect(ui->chatListWidget->verticalScrollBar(), &QScrollBar::valueChanged, this, &LANShareWindow::onScroll);
     mUtils::setFileAssociation(config.contextMenu);
-    if (config.allowBackgroundRunning) {
-        createTrayIcon();
-    }
+    // 托盘图标始终创建：单击切换窗口显隐，右键菜单提供显示/隐藏与退出。
+    createTrayIcon();
 }
 
 
@@ -409,7 +424,7 @@ void LANShareWindow::newWebClient(const QString &token, const QString &ip, const
     QMessageBox msgBox(this);
     msgBox.setText("是否同意网页客户端：【" + ip + "】的访问请求？");
     msgBox.setWindowTitle("有新的客户端访问");
-    msgBox.setWindowIcon(QIcon(":/img/ic_launcher.png"));
+    msgBox.setWindowIcon(QIcon(":/img/app.ico"));
     msgBox.setStandardButtons(QMessageBox::No | QMessageBox::Yes);
     msgBox.setDefaultButton(QMessageBox::No);
     msgBox.setWindowFlags(msgBox.windowFlags() | Qt::WindowStaysOnTopHint); // 设置窗口始终显示在顶层
@@ -431,10 +446,20 @@ void LANShareWindow::dragEnterEvent(QDragEnterEvent *event) {
 
 // 拖拽文件到窗口事件
 void LANShareWindow::dropEvent(QDropEvent *event) {
-    QList<QUrl> urls = event->mimeData()->urls();
+    handleDroppedUrls(event->mimeData()->urls());
+}
+
+// 统一处理拖入的文件/文件夹
+void LANShareWindow::handleDroppedUrls(const QList<QUrl> &urls) {
+    if (urls.isEmpty()) {
+        return;
+    }
     std::vector<LFile *> list;
     for (const auto &url: urls) {
         QFileInfo fileInfo(url.toLocalFile()); //绝对路径与相对路径都可以
+        if (!fileInfo.exists()) {
+            continue;
+        }
         auto *lFile = new LFile();
         lFile->setFileName(fileInfo.fileName());
         lFile->setFileSize(fileInfo.size());
@@ -442,7 +467,9 @@ void LANShareWindow::dropEvent(QDropEvent *event) {
         lFile->setIsDirectory(fileInfo.isDir());
         list.push_back(lFile);
     }
-    showDeviceSelecter(list);
+    if (!list.empty()) {
+        showDeviceSelecter(list);
+    }
 }
 
 void LANShareWindow::dealMessage(Message *messageW, QListWidgetItem *item) const {
@@ -548,6 +575,21 @@ void LANShareWindow::keyPressEvent(QKeyEvent *event) {
 }
 
 bool LANShareWindow::eventFilter(QObject *watched, QEvent *event) {
+    // 统一处理 centralWidget 及其子控件的文件拖放（这些控件铺满了客户区）
+    if (event->type() == QEvent::DragEnter) {
+        auto *de = static_cast<QDragEnterEvent *>(event);
+        if (de->mimeData()->hasUrls()) {
+            de->acceptProposedAction();
+            return true;
+        }
+    } else if (event->type() == QEvent::Drop) {
+        auto *de = static_cast<QDropEvent *>(event);
+        if (de->mimeData()->hasUrls()) {
+            handleDroppedUrls(de->mimeData()->urls());
+            de->acceptProposedAction();
+            return true;
+        }
+    }
     if (watched == ui->textEdit) {
         if (event->type() == QEvent::Clipboard) {
             auto *textEdit = qobject_cast<QTextEdit *>(watched);
@@ -676,11 +718,7 @@ void LANShareWindow::updateSetting() {
     LANShare::getInstance()->updateMDevices();
     mUtils::setFileAssociation(config.contextMenu);
     ui->webService->setChecked(config.webService);
-    if (config.allowBackgroundRunning) {
-        createTrayIcon();
-    } else {
-        closeTrayIcon();
-    }
+    // 托盘图标始终存在，不再随“允许后台运行”设置创建或销毁。
 }
 
 void LANShareWindow::loadDeviceList() {
@@ -688,14 +726,9 @@ void LANShareWindow::loadDeviceList() {
 }
 
 void LANShareWindow::closeEvent(QCloseEvent *event) {
-    if (config.allowBackgroundRunning) {
-        // 取消默认的关闭操作
-        event->ignore();
-        // 隐藏窗口
-        this->hide();
-    } else {
-        QApplication::quit();
-    }
+    // 点关闭按钮只隐藏到托盘，程序继续在后台运行；退出请使用托盘右键菜单“退出”。
+    event->ignore();
+    this->hide();
 }
 
 void LANShareWindow::copyText(const QString &text) {
@@ -728,7 +761,7 @@ void LANShareWindow::requstRecvFiles(AcceptFiles *acceptFiles) {
     msgBox.setText("是否接收设备：【" + acceptFiles->device.getDevName() + "】发送的" +
                    QString::number(acceptFiles->files.size()) + "个文件");
     msgBox.setWindowTitle("接收文件请求");
-    msgBox.setWindowIcon(QIcon(":/img/ic_launcher.png"));
+    msgBox.setWindowIcon(QIcon(":/img/app.ico"));
     msgBox.setStandardButtons(QMessageBox::No | QMessageBox::Yes);
     msgBox.setDefaultButton(QMessageBox::No);
     msgBox.setWindowFlags(msgBox.windowFlags() | Qt::WindowStaysOnTopHint); // 设置窗口始终显示在顶层
@@ -736,14 +769,19 @@ void LANShareWindow::requstRecvFiles(AcceptFiles *acceptFiles) {
     msgBox.setButtonText(QMessageBox::Yes, "确认");
     int ret = msgBox.exec();
     std::thread([ret, acceptFiles]() mutable {
-        LANShare::startHandleRecvFile(
-            ret == QMessageBox::Yes,
-            acceptFiles->device,
-            acceptFiles->needEncData,
-            acceptFiles->files,
-            std::move(acceptFiles->tcpClient)
-        );
-        delete acceptFiles;
+        if (acceptFiles->isSeg) {
+            // 分段并行：连接和 af 都交给 startHandleRecvSeg 处理
+            LANShare::startHandleRecvSeg(ret == QMessageBox::Yes, acceptFiles);
+        } else {
+            LANShare::startHandleRecvFile(
+                ret == QMessageBox::Yes,
+                acceptFiles->device,
+                acceptFiles->needEncData,
+                acceptFiles->files,
+                std::move(acceptFiles->tcpClient)
+            );
+            delete acceptFiles;
+        }
     }).detach();
 }
 
@@ -766,25 +804,35 @@ void LANShareWindow::createTrayIcon() {
     }
     // 创建系统托盘图标
     trayIcon = new QSystemTrayIcon(this);
-    trayIcon->setIcon(QIcon(":/img/ic_launcher.png"));
+    trayIcon->setIcon(QIcon(":/img/app.ico"));
+    trayIcon->setToolTip(QStringLiteral("局域网互传"));
     qDebug() << "Tray icon created";
-    // 创建托盘菜单
-    auto *trayMenu = new QMenu();
-    auto *show = new QAction("显示窗口", this);
-    auto *quitAction = new QAction("退出", this);
-    QObject::connect(show, &QAction::triggered, [this]() {
-        setWindowToTopLayer();
-    });
-    QObject::connect(quitAction, &QAction::triggered, [this]() {
-        QApplication::quit();
-    });
-    // 托盘图标双击事件
-    QObject::connect(trayIcon, &QSystemTrayIcon::activated, [this](QSystemTrayIcon::ActivationReason reason) {
-        if (reason == QSystemTrayIcon::Trigger) {
+    // 切换窗口：可见则隐藏，隐藏则显示并提到最前
+    auto toggleWindow = [this]() {
+        if (isVisible()) {
+            hide();
+        } else {
             setWindowToTopLayer();
         }
+    };
+    // 创建托盘菜单
+    auto *trayMenu = new QMenu();
+    auto *toggleAction = new QAction(QStringLiteral("显示·隐藏"), this);
+    auto *quitAction = new QAction("退出", this);
+    QObject::connect(toggleAction, &QAction::triggered, toggleWindow);
+    QObject::connect(quitAction, &QAction::triggered, [this]() {
+        // 从托盘菜单退出：真正结束程序
+        trayIcon->hide();
+        QApplication::quit();
     });
-    trayMenu->addAction(show);
+    // 单击托盘图标：切换窗口显示/隐藏
+    QObject::connect(trayIcon, &QSystemTrayIcon::activated,
+                     [toggleWindow](QSystemTrayIcon::ActivationReason reason) {
+        if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
+            toggleWindow();
+        }
+    });
+    trayMenu->addAction(toggleAction);
     trayMenu->addAction(quitAction);
     trayIcon->setContextMenu(trayMenu);
     // 显示托盘图标
@@ -827,7 +875,7 @@ void LANShareWindow::checkVersionCallback(QNetworkReply *reply) {
             QMessageBox msgBox(this);
             msgBox.setText(updateContent);
             msgBox.setWindowTitle("有新版本更新: " + versionName);
-            msgBox.setWindowIcon(QIcon(":/img/ic_launcher.png"));
+            msgBox.setWindowIcon(QIcon(":/img/app.ico"));
             msgBox.setStandardButtons(QMessageBox::No | QMessageBox::Yes);
             msgBox.setDefaultButton(QMessageBox::No);
             msgBox.setButtonText(QMessageBox::No, isForceUpdate ? "退出" : "不更新");

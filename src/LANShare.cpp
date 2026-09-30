@@ -1,7 +1,14 @@
 #include <list>
 #include <thread>
+#include <mutex>
+#include <atomic>
+#include <condition_variable>
+#include <unordered_map>
+#include <functional>
 #include <unistd.h>
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QUuid>
 #include <QApplication>
 #include "DataDec.h"
@@ -30,6 +37,49 @@
 LANShare *instance = nullptr;
 
 #define BUFF_SIZE (1024 * 1024 * 2)
+
+// ===== 分段并行传输（FS_SHARE_SEG）全局协调表 =====
+// 对应安卓端 SegCoord.MAP：按 segId 聚合同一文件的多条连接。
+static std::mutex g_segMapMutex;
+static std::unordered_map<std::string, SegCoord *> g_segMap;
+
+// 加入某个 segId 的分段传输，返回该 segId 唯一的协调器。
+// 落盘路径必须「算完再发布」：resolver 只在锁内、由竞争胜出的首段调用一次，
+// 所有段都用 coord.filePath 那一个路径，
+// 否则 avoidDuplication 每调一次得到不同文件名，会把一个文件拆成多个。
+typedef std::function<QString()> SegPathResolver;
+static SegCoord *segCoordJoin(const std::string &segId, mlong fileSize, int segCount,
+                               LFile *fileContent, const QString &peerName,
+                               const SegPathResolver &resolver) {
+    {
+        std::lock_guard<std::mutex> lk(g_segMapMutex);
+        auto it = g_segMap.find(segId);
+        if (it != g_segMap.end()) return it->second;
+    }
+    std::lock_guard<std::mutex> lk(g_segMapMutex);
+    auto it = g_segMap.find(segId);
+    if (it != g_segMap.end()) return it->second;
+    QString path = resolver();
+    auto *c = new SegCoord();
+    c->segId = segId;
+    c->fileSize = fileSize;
+    c->segCount = segCount;
+    c->fileContent = fileContent;
+    c->filePath = path;
+    c->peerName = peerName;
+    c->creatorId = std::this_thread::get_id();
+    g_segMap[segId] = c;
+    return c;
+}
+
+static void segCoordRemove(const std::string &segId) {
+    std::lock_guard<std::mutex> lk(g_segMapMutex);
+    auto it = g_segMap.find(segId);
+    if (it != g_segMap.end()) {
+        delete it->second;
+        g_segMap.erase(it);
+    }
+}
 
 void LANShare::addDevice(const Device &device) {
     std::mutex &lock = StringLockManager::getStringLock("mMapMutex");
@@ -118,6 +168,10 @@ void makeDataEnc(const Device &device, DataEnc *dataEnc) {
     dataEnc->putInt(DATA_VERSION);
     dataEnc->putInt(device.getBatteryLevel());
     dataEnc->putByte(device.getChargeStatus());
+    // webDeviceCount：PC 没有 web 设备，固定写 0 占位。
+    // 必须写：接收端无条件读这个字段，缺了它会把后面的消息长度前缀误读成
+    // webDeviceCount，进而错位读取，把消息内容吃掉，表现为收到空白文本。
+    dataEnc->putInt(0);
 }
 
 void udpSend(UDPServer *udpServer, DataEnc *dataEnc, const QString &ip, int port) {
@@ -455,10 +509,290 @@ mlong findFile(std::list<LFile> &listFile, mlong size, const QString &path) {
     return fileSize;
 }
 
+// =====================================================================
+// 分段并行传输（FS_SHARE_SEG）—— 接收侧
+// 对应安卓端 fsSegShare / runSeg / finishSeg / recvSegFile。
+// 一条连接只负责文件的某一段，接收端按偏移落盘；多条连接靠 segId 聚合。
+// =====================================================================
+
+void LANShare::fsSegShare(DataDec &dataDec, const Device &device,
+                          std::unique_ptr<TCPClient> &tcpClientRef) {
+    TCPClient *tcpClient = tcpClientRef.get();
+    // 握手帧里设备信息之后的第一个字节就是 encData 标志
+    bool encData = dataDec.getBool();
+    auto *buffer = new mbyte[BUFF_SIZE];
+    try {
+        // 读分段描述帧：12 字节头 + 载荷
+        if (tcpClient->recvo(buffer, 0, DataEnc::headerSize(), 0) != DataEnc::headerSize()) {
+            throw std::runtime_error("seg read header error");
+        }
+        DataDec fd(buffer, DataEnc::headerSize());
+        int plen = fd.getLength();
+        if (plen < 0 || plen > BUFF_SIZE - DataEnc::headerSize()) {
+            throw std::runtime_error("seg payload length invalid");
+        }
+        if (tcpClient->recvo(buffer, DataEnc::headerSize(), plen, 0) != plen) {
+            throw std::runtime_error("seg read payload error");
+        }
+        fd.setData(buffer, DataEnc::headerSize() + plen);
+        mlong fileSize = fd.getLong();
+        std::string fileName = fd.getString();
+        std::string segId = fd.getString();
+        int segIndex = fd.getInt();
+        int segCount = fd.getInt();
+        mlong segStart = fd.getLong();
+        mlong segLen = fd.getLong();
+        qDebug("SEG-IN segId=%s idx=%d/%d start=%lld len=%lld fileSize=%lld name=%s",
+               segId.c_str(), segIndex, segCount, fileSize, segLen, fileSize, fileName.c_str());
+
+        // 候选落盘路径（不在这里调 avoidDuplication）：真正的路径由首段在
+        // segCoordJoin 锁内算一次，其余段复用 coord->filePath，绝不能各算各的。
+        QString saveDir = QDir::cleanPath(config.saveFilePath);
+        QString candidate = saveDir + QDir::separator() + QString::fromStdString(fileName);
+
+        auto *fileContent = new LFile();
+        fileContent->setFileName(QString::fromStdString(fileName));
+        fileContent->setFileSize(fileSize);
+        fileContent->setUuid(Utils::getUUID());
+        fileContent->setNextStep(true);
+
+        SegCoord *coord = segCoordJoin(segId, fileSize, segCount, fileContent,
+            device.getDevName(),
+            [candidate]() -> QString {
+                // 只在竞争胜出的首段、锁内执行一次
+                return avoidDuplication(QFileInfo(candidate));
+            });
+        // 非首段：自己 new 的 fileContent 没被采用，释放掉（安卓靠 GC，C++ 要手动）
+        if (coord->fileContent != fileContent) {
+            delete fileContent;
+        }
+        bool first = coord->isFirst();
+        QString outPath = coord->filePath;
+        qDebug("SEG-JOIN segId=%s idx=%d/%d first=%d path=%s",
+               segId.c_str(), segIndex, segCount, first ? 1 : 0, outPath.toStdString().c_str());
+
+        // 确认弹窗：只在首段且未开启自动接收时弹；其余段直接收
+        if (first && !config.acceptRecvFiles) {
+            auto *af = new AcceptFiles();
+            af->device = device;
+            af->needEncData = encData;
+            af->isSeg = true;
+            af->fileSize = fileSize;
+            af->fileName = QString::fromStdString(fileName);
+            af->segId = segId;
+            af->segIndex = segIndex;
+            af->segCount = segCount;
+            af->segStart = segStart;
+            af->segLen = segLen;
+            af->encData = encData;
+            af->files.push_back(coord->fileContent);
+            // 连接所有权转移给 AcceptFiles，handleTcp 不再持有，避免双重释放
+            af->tcpClient = std::move(tcpClientRef);
+            emit LANShareWindow::getInstance()->sigRequstRecvFiles(af);
+            delete[] buffer;
+            return;
+        }
+
+        runSeg(coord, segIndex, segCount, segStart, segLen, tcpClient, encData, outPath);
+    } catch (const std::exception &e) {
+        qDebug("SEG-ERROR fsSegShare: %s", e.what());
+    }
+    delete[] buffer;
+}
+
+void LANShare::runSeg(SegCoord *coord, int segIndex, int segCount,
+                       mlong segStart, mlong segLen, TCPClient *tcpClient,
+                       bool encData, const QString &outFile) {
+    qDebug("SEG-RUN idx=%d/%d segId=%s start=%lld len=%lld",
+           segIndex, segCount, coord->segId.c_str(), segStart, segLen);
+    try {
+        if (coord->isBroken()) {
+            qDebug("SEG-SKIP idx=%d segId=%s reason=ALREADY_BROKEN", segIndex, coord->segId.c_str());
+            if (coord->arrive()) finishSeg(coord, outFile, false);
+            return;
+        }
+        // 预分配全长：并发句柄各自扩展长度会互相截断，必须在写之前定死。
+        // 弹窗那条连接可能不是 idx=0，所以首连接（isFirst）也必须预分配。
+        if (segIndex == 0 || coord->isFirst()) {
+            QFile pre(outFile);
+            if (pre.open(QIODevice::ReadWrite)) {
+                pre.resize(coord->fileSize);
+                pre.close();
+            }
+        }
+        // 只让一条连接把「接收中」进度行加进列表，所有段共用同一个 coord
+        if (coord->presentOnce()) {
+            emit LANShareWindow::getInstance()->sigRecviceFile(
+                coord->fileContent, coord->fileContent->getUuid(),
+                coord->fileContent->getFileName(),
+                coord->peerName, coord->fileSize, true, true, false);
+        }
+        long long thatTotal = recvSegFile(tcpClient, segIndex, segCount, segStart, segLen,
+                                           outFile, coord, encData);
+        bool last = coord->arrive();
+        long long total = coord->receivedTotal();
+        // 终态字节只看本段自己收满没有，不能用整体 total（非最后一段此时还没凑齐）
+        bool segOk = !coord->isBroken() && thatTotal == segLen;
+        bool allOk = segOk && total == coord->fileSize;
+        qDebug("SEG-DONE idx=%d/%d segId=%s thatSeg=%lld/%lld total=%lld/%lld last=%d ok=%d",
+               segIndex, segCount, coord->segId.c_str(), thatTotal, segLen, total, coord->fileSize,
+               last ? 1 : 0, segOk ? 1 : 0);
+        // 每段都回一个终态字节：2=OK, 3=FAIL
+        mbyte resp = segOk ? 2 : 3;
+        try { tcpClient->send(&resp, 1); } catch (...) {}
+        if (last) finishSeg(coord, outFile, allOk);
+    } catch (const std::exception &e) {
+        qDebug("SEG-ERROR runSeg idx=%d: %s", segIndex, e.what());
+        coord->markBroken();
+        // 即使本段中途炸了也必须算「已结束」，否则凑不满 segCount 没人收尾
+        if (coord->arrive()) finishSeg(coord, outFile, false);
+    }
+    try { tcpClient->close(); } catch (...) {}
+}
+
+void LANShare::finishSeg(SegCoord *coord, const QString &outFile, bool ok) {
+    if (!coord->finishOnce()) {
+        qDebug("SEG-FINISH-DUP segId=%s", coord->segId.c_str());
+        return;
+    }
+    LFile *fc = coord->fileContent;
+    if (ok) {
+        fc->setPath(outFile);
+        qDebug("SEG-FINISH segId=%s ok=1 received=%lld/%lld path=%s",
+               coord->segId.c_str(), coord->receivedTotal(), coord->fileSize, outFile.toStdString().c_str());
+        emit LANShareWindow::getInstance()->sigRecviceFileSuccess(fc->getUuid(), true, outFile);
+    } else {
+        qDebug("SEG-FINISH segId=%s ok=0 received=%lld/%lld",
+               coord->segId.c_str(), coord->receivedTotal(), coord->fileSize);
+        emit LANShareWindow::getInstance()->sigRecviceFileSuccess(fc->getUuid(), false, outFile);
+        // 任何一段缺失/出错都按整体失败处理，删掉半截文件
+        if (QFile::exists(outFile)) {
+            QFile::remove(outFile);
+        }
+    }
+    std::string sid = coord->segId;
+    segCoordRemove(sid);
+    delete fc;
+}
+
+long long LANShare::recvSegFile(TCPClient *tcpClient, int segIndex, int segCount,
+                                 mlong segStart, mlong segLen, const QString &outFile,
+                                 SegCoord *coord, bool dec) {
+    const int headerLen = DataEnc::headerSize();
+    auto *buffer = new mbyte[BUFF_SIZE];
+    long long segOff = 0;
+    long long thatTotal = 0;
+    int lastProgress = 0;
+    IOUtils fileIO(outFile, QFile::ReadWrite);
+    fileIO.setSeek(segStart);
+    qDebug("SEG-RECV-START idx=%d/%d segId=%s start=%lld len=%lld dec=%d",
+           segIndex, segCount, coord->segId.c_str(), segStart, segLen, dec ? 1 : 0);
+    try {
+        while (true) {
+            if (tcpClient->recvo(buffer, 0, headerLen, 0) != headerLen) {
+                qDebug("SEG-SHORT idx=%d segId=%s atSeg=%lld reason=HEADER_EOF",
+                       segIndex, coord->segId.c_str(), segOff);
+                coord->markBroken();
+                break;
+            }
+            DataDec headDec(buffer, headerLen);
+            mbyte cmd = headDec.getByteCmd();
+            if (cmd == FS_DATA) {
+                int length = headDec.getLength();
+                if (length < 0 || length > BUFF_SIZE - headerLen) {
+                    qDebug("SEG-BAD-LEN idx=%d len=%d", segIndex, length);
+                    coord->markBroken();
+                    break;
+                }
+                if (tcpClient->recvo(buffer, headerLen, length, 0) != length) {
+                    qDebug("SEG-SHORT idx=%d segId=%s atSeg=%lld got<want",
+                           segIndex, coord->segId.c_str(), segOff);
+                    coord->markBroken();
+                    break;
+                }
+                // 加密偏移是相对本段的（发送端从段内 0 开始计数）
+                if (dec) decData(buffer, length, headerLen, segOff);
+                fileIO.setSeek(segStart + thatTotal);
+                fileIO.write((char *) buffer, headerLen, length);
+                segOff += length;
+                thatTotal += length;
+                long long sum = coord->addReceived(length);
+                int progress = (int) std::min<long long>(99, sum * 100 / coord->fileSize);
+                if (progress != lastProgress) {
+                    lastProgress = progress;
+                    emit LANShareWindow::getInstance()->sigRecviceFileProgress(
+                        coord->fileContent->getUuid(), progress);
+                }
+                mbyte ack;
+                if (coord->fileContent->isNextStep()) {
+                    ack = FS_NEXT;
+                } else {
+                    ack = FS_BREAK;
+                    coord->markBroken();
+                }
+                tcpClient->send(&ack, 1);
+                if (coord->isBroken()) break;
+            } else if (cmd == FS_END) {
+                break;
+            } else if (cmd == FS_CLOSE && segOff == segLen) {
+                // 发送端计数误判发来 FS_CLOSE，但本段字节已收满：按正常收尾
+                qDebug("SEG-FULL-CLOSE idx=%d segId=%s segOff=%lld/%lld",
+                       segIndex, coord->segId.c_str(), segOff, segLen);
+                break;
+            } else {
+                qDebug("SEG-UNKNOWN-CMD idx=%d cmd=%d", segIndex, cmd);
+                coord->markBroken();
+                break;
+            }
+        }
+    } catch (const std::exception &e) {
+        qDebug("SEG-RECV-EX idx=%d: %s", segIndex, e.what());
+        coord->markBroken();
+    }
+    fileIO.close();
+    delete[] buffer;
+    qDebug("SEG-RECV-END idx=%d segId=%s thatSeg=%lld/%lld",
+           segIndex, coord->segId.c_str(), thatTotal, segLen);
+    return thatTotal;
+}
+
+void LANShare::startHandleRecvSeg(bool accept, AcceptFiles *af) {
+    SegCoord *coord = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(g_segMapMutex);
+        auto it = g_segMap.find(af->segId);
+        if (it != g_segMap.end()) coord = it->second;
+    }
+    TCPClient *tcpClient = af->tcpClient.get();
+    if (coord == nullptr || tcpClient == nullptr) {
+        if (tcpClient) try { tcpClient->close(); } catch (...) {}
+        delete af;
+        return;
+    }
+    if (accept) {
+        runSeg(coord, af->segIndex, af->segCount, af->segStart, af->segLen,
+               tcpClient, af->encData, coord->filePath);
+    } else {
+        coord->markBroken();
+        mbyte closeByte = FS_CLOSE;
+        try { tcpClient->send(&closeByte, 1); } catch (...) {}
+        if (coord->arrive()) finishSeg(coord, coord->filePath, false);
+        try { tcpClient->close(); } catch (...) {}
+    }
+    af->tcpClient.release(); // 已由 runSeg / 上面关闭
+    delete af;
+}
+
 /**
  * 发送文件
  */
 void LANShare::sendFile(const Device &device, std::vector<LFile *> selectFiles, int count) {
+    // 分段并行传输：未加密 + 对端 v5+ + 全是普通文件 + 每个文件够大，才走多连接
+    if (isParallelEligible(device, selectFiles, config.encData)) {
+        qDebug("SEND-PARALLEL: device=%s files=%zu", device.getDevName().toStdString().c_str(), selectFiles.size());
+        sendFileParallel(device, selectFiles);
+        return;
+    }
     std::unique_ptr<TCPClient> client = makeSocket(device.getDevIp(), device.getDevPort());
     if (client == nullptr) {
         return;
@@ -605,6 +939,207 @@ void LANShare::sendFile(const Device &device, std::vector<LFile *> selectFiles, 
         }
     }
     delete[] buffer;
+}
+
+// =====================================================================
+// 分段并行传输（FS_SHARE_SEG）—— 发送侧
+// 对应安卓端 isParallelEligible / fileSendParallel / sendFileParallel / sendOneSeg。
+// =====================================================================
+
+bool LANShare::isParallelEligible(const Device &device, const std::vector<LFile *> &fileList, bool encData) {
+    if (encData) return false;
+    if (device.getDataVersion() < DATA_VERSION_5) return false;
+    if (PARALLEL_SEGS <= 1) return false;
+    if (fileList.empty()) return false;
+    for (LFile *f: fileList) {
+        if (!isFileParallelEligible(f)) return false;
+    }
+    return true;
+}
+
+bool LANShare::isFileParallelEligible(LFile *f) {
+    if (f == nullptr) return false;
+    // 分段只处理普通文件：流/uri/目录没有可按偏移复用的文件句柄
+    if (f->isDirectory()) return false;
+    if (f->getType() != LFile::FILE) return false;
+    // 每段 base = 总长/段数，base 必须 >= PARALLEL_MIN_SIZE 才值得切
+    if (f->getFileSize() < (mlong) PARALLEL_MIN_SIZE * PARALLEL_SEGS) return false;
+    return true;
+}
+
+void LANShare::sendFileParallel(const Device &device, std::vector<LFile *> selectFiles) {
+    for (LFile *f: selectFiles) {
+        if (!isFileParallelEligible(f)) {
+            // 兜底：理论上入口判定已挡住，真走到这就跳过这个文件
+            qDebug("SEND-PARA skip non-eligible file");
+            continue;
+        }
+        sendFileParallelOne(device, f);
+    }
+}
+
+long long LANShare::sendFileParallelOne(const Device &device, LFile *file) {
+    const int segs = PARALLEL_SEGS;
+    const long long total = file->getFileSize();
+    const long long base = total / segs;
+    if (segs <= 1 || device.getDataVersion() < DATA_VERSION_5 || base < PARALLEL_MIN_SIZE) {
+        qDebug("SEND-PARA skip file peerVer=%d base=%lld", device.getDataVersion(), base);
+        return -1;
+    }
+    // 找本机与对端同网段的设备（握手帧要带本机设备信息）
+    Device mDevice;
+    bool found = false;
+    std::vector<Device> mDevices = getInstance()->getMDevices();
+    for (const Device &d: mDevices) {
+        if (NetWorldUtils::subNet(NetWorldUtils::getMaskMapLength(d.getDevNetMask()),
+                                   d.getDevIp(), device.getDevIp())) {
+            mDevice = d;
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        qDebug("SEND-PARA no local device for peer=%s", device.getDevIp().toStdString().c_str());
+        return -1;
+    }
+
+    // 进度行（与单流发送一样在列表里显示一条）
+    auto *progressFile = new LFile();
+    progressFile->setFileName(file->getFileName());
+    progressFile->setFileSize(total);
+    QString progressUuid = Utils::getUUID();
+    progressFile->setUuid(progressUuid);
+    progressFile->setPath(file->getPath());
+    emit LANShareWindow::getInstance()->sigRecviceFile(
+        progressFile, progressUuid, file->getFileName(),
+        device.getDevName() + " <- " + config.clientName, total, false, true, false);
+
+    std::string segId = Utils::getUUID().toStdString();
+    auto *sentTotal = new std::atomic<long long>(0);
+    auto *lastProgress = new std::atomic<int>(-1);
+    std::vector<long long> got(segs, 0);
+    std::vector<long long> exp(segs, 0);
+    std::atomic<int> broken(0);
+
+    qDebug("SEND-PARA-START segId=%s segs=%d total=%lld each=%lld peer=%s",
+           segId.c_str(), segs, total, base, device.getDevIp().toStdString().c_str());
+
+    std::vector<std::thread> threads;
+    for (int i = 0; i < segs; i++) {
+        long long start = i * base;
+        long long len = (i == segs - 1) ? (total - start) : base;
+        exp[i] = len;
+        if (len <= 0) { got[i] = 0; continue; }
+        threads.emplace_back([&, i, start, len]() {
+            try {
+                got[i] = sendOneSeg(mDevice, device, file, segId, i, segs, start, len,
+                                    sentTotal, progressUuid, lastProgress);
+            } catch (const std::exception &e) {
+                qDebug("SEND-SEG-EX idx=%d: %s", i, e.what());
+                broken.fetch_add(1);
+            }
+        });
+    }
+    for (auto &t: threads) if (t.joinable()) t.join();
+
+    long long sum = 0;
+    bool ok = broken.load() == 0;
+    for (int i = 0; i < segs; i++) {
+        sum += got[i];
+        if (got[i] != exp[i]) ok = false;
+    }
+    if (sum != total) ok = false;
+    qDebug("SEND-PARA segId=%s sum=%lld/%lld broken=%d ok=%d",
+           segId.c_str(), sum, total, broken.load(), ok ? 1 : 0);
+
+    emit LANShareWindow::getInstance()->sigRecviceFileSuccess(progressUuid, ok, file->getPath());
+    delete sentTotal;
+    delete lastProgress;
+    // progressFile 已交给 UI（sigRecviceFile），由界面侧持有；与现有单流发送一致
+    return ok ? sum : -1;
+}
+
+long long LANShare::sendOneSeg(const Device &mDevice, const Device &device, LFile *file,
+                               const std::string &segId, int idx, int segs,
+                               long long start, long long len,
+                               std::atomic<long long> *sentTotal, const QString &progressUuid,
+                               std::atomic<int> *lastProgress) {
+    const int headerLen = DataEnc::headerSize();
+    if (len <= 0) return 0;
+    std::unique_ptr<TCPClient> client = makeSocket(device.getDevIp(), device.getDevPort());
+    if (client == nullptr) return -1;
+    auto *hbuf = new mbyte[BUFF_SIZE];
+    long long sent = 0;
+    bool peerBroke = false;
+    try {
+        // 握手帧：本机设备信息 + cmd FS_SHARE_SEG + count 1 + bool false
+        DataEnc hs(hbuf, BUFF_SIZE);
+        makeDataEnc(mDevice, &hs);
+        hs.setCmd(FS_SHARE_SEG);
+        hs.setCount(1);
+        hs.putBool(false);
+        client->send(hs.getData(), hs.getDataLen());
+
+        // 分段描述帧（无设备信息）：整文件大小/名 + segId + 段号/段数 + 起点/长度
+        DataEnc fd(hbuf, BUFF_SIZE);
+        fd.reset();
+        fd.putLong(file->getFileSize());
+        fd.putString(file->getFileName());
+        fd.putString(segId);
+        fd.putInt(idx);
+        fd.putInt(segs);
+        fd.putLong(start);
+        fd.putLong(len);
+        client->send(fd.getData(), fd.getDataLen());
+
+        // 数据阶段：每段独立句柄 seek 到起点，读到 len 为止，不加密
+        IOUtils segIO(file->getPath(), QFile::ReadOnly);
+        segIO.setSeek(start);
+        long long remaining = len;
+        while (remaining > 0) {
+            int want = (int) std::min<long long>(BUFF_SIZE - headerLen, remaining);
+            int n = segIO.read(hbuf + headerLen, want);
+            if (n <= 0) break;
+            DataEnc de(hbuf, BUFF_SIZE);
+            de.setByteCmd(FS_DATA);
+            de.setDataIndex(n);
+            client->send(de.getData(), de.getDataLen());
+            mbyte ack = 0;
+            client->recvo(&ack, 1);
+            if (ack == FS_BREAK) {
+                peerBroke = true;
+                break;
+            }
+            sent += n;
+            remaining -= n;
+            long long done = sentTotal->fetch_add(n) + n;
+            int p = (int) std::min<long long>(99, done * 100 / file->getFileSize());
+            int lp = lastProgress->load();
+            if (p != lp && lastProgress->compare_exchange_strong(lp, p)) {
+                emit LANShareWindow::getInstance()->sigRecviceFileProgress(progressUuid, p);
+            }
+        }
+        segIO.close();
+
+        // 尾帧：FS_END 正常，FS_CLOSE 异常
+        DataEnc tail(hbuf, BUFF_SIZE);
+        tail.reset();
+        tail.setByteCmd((sent == len && !peerBroke) ? FS_END : FS_CLOSE);
+        client->send(tail.getData(), tail.getDataLen());
+
+        // 终态字节：数据阶段每块已各读一个 FS_NEXT，这里再读一个 2(OK)/3(FAIL)
+        mbyte term = 0;
+        client->recvo(&term, 1);
+        bool ok = (sent == len) && !peerBroke && term == 2;
+        qDebug("SEND-SEG idx=%d/%d segId=%s sent=%lld/%lld term=%d ok=%d",
+               idx, segs, segId.c_str(), sent, len, term, ok ? 1 : 0);
+    } catch (const std::exception &e) {
+        qDebug("SEND-SEG-EX idx=%d: %s", idx, e.what());
+        sent = -1;
+    }
+    delete[] hbuf;
+    try { client->close(); } catch (...) {}
+    return sent;
 }
 
 void LANShare::startHandleRecvFile(
@@ -880,6 +1415,8 @@ void LANShare::handleTcp(std::unique_ptr<TCPClient> tcpClient) {
             emit
             LANShareWindow::getInstance()->sigRequstRecvFiles(acceptFiles);
         }
+    } else if (cmd == FS_SHARE_SEG) {
+        fsSegShare(dataDec, device, tcpClient);
     } else if (cmd == FS_MESSAGE) {
         const char *message = dataDec.getStr();
         const QString decode = mUtils::decMessage(message, config.messageKey);

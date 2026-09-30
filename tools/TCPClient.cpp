@@ -70,21 +70,39 @@ QString TCPClient::getRemoteIP() const {
 }
 
 bool TCPClient::connect() {
-    tcp_fd = (int) socket(AF_INET, SOCK_STREAM, 0);
-    struct sockaddr_in servAddr{};
-    memset(&servAddr, 0, sizeof(servAddr));
-    servAddr.sin_family = AF_INET;
-    servAddr.sin_addr.s_addr = inet_addr(ip.toStdString().c_str());
-    servAddr.sin_port = htons(port);
-    if (::connect(tcp_fd, (struct sockaddr *) &servAddr, sizeof(servAddr)) == -1) {
-        qDebug("connection failed");
+    // 用 getaddrinfo 自动解析 IPv4/IPv6（AF_UNSPEC），
+    // 旧实现写死 AF_INET + inet_addr，遇到 IPv6 地址会连接失败。
+    struct addrinfo hints{};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    struct addrinfo *res = nullptr;
+    if (getaddrinfo(ip.toUtf8().constData(), std::to_string(port).c_str(), &hints, &res) != 0) {
+        qDebug("getaddrinfo failed");
         setConnected(false);
         return false;
-    } else {
+    }
+    bool ok = false;
+    for (struct addrinfo *p = res; p != nullptr; p = p->ai_next) {
+        tcp_fd = (int) socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        if (tcp_fd == -1) {
+            continue;
+        }
+        if (::connect(tcp_fd, p->ai_addr, (int) p->ai_addrlen) != -1) {
+            ok = true;
+            break;
+        }
+        ::closesocket(tcp_fd);
+        tcp_fd = -1;
+    }
+    freeaddrinfo(res);
+    if (ok) {
         qDebug("connection succeed");
         setConnected(true);
-        return true;
+    } else {
+        qDebug("connection failed");
+        setConnected(false);
     }
+    return ok;
 }
 
 int TCPClient::send(const void *buff, int len, int flag) const {

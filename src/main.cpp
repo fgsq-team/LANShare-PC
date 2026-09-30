@@ -6,6 +6,7 @@
 #include "DataEnc.h"
 #include "CleanupTool.h"
 #include "SignalHandler.h"
+#include "FirewallHelper.h"
 #include <QApplication>
 #include <thread>
 #include <QLocalSocket>
@@ -86,6 +87,8 @@ int main(int argc, char *argv[]) {
     }
     LANShareWindow w;
     LANShare lanShare(&w);
+    // 自动添加 Windows 防火墙入站放行规则（需要管理员权限，失败不阻断启动）
+    FirewallHelper::addFirewallRules();
     // TCP 文件接收线程
     std::thread tTcpServer(LANShare::createTcpServer);
     tTcpServer.detach();
@@ -95,7 +98,7 @@ int main(int argc, char *argv[]) {
     // 扫描设备线程
     std::thread tScannDevice(LANShare::scannDevice);
     tScannDevice.detach();
-    w.setWindowTitle("LANShare");
+    w.setWindowTitle(QStringLiteral("局域网互传"));
     w.show();
 
     QObject::connect(&server, &QLocalServer::newConnection, [&]() {

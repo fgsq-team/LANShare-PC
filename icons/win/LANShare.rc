@@ -1,3 +1,6 @@
 #include "resource.h"
 
-IDI_LANSHARE_ICON ICON "icon_128x128.ico"
+IDI_LANSHARE_ICON ICON "app.ico"
+
+// 应用程序清单（资源类型 RT_MANIFEST=24，ID=1）：声明需要管理员权限
+1 24 "app.manifest"
