@@ -1,0 +1,11 @@
+//
+// Created by fgsqme on 2022/10/29.
+//
+
+#ifndef LANSHARE_WIN_RESOURCE_H
+#define LANSHARE_WIN_RESOURCE_H
+
+
+#define IDI_LANSHARE_ICON 201
+
+#endif //LANSHARE_WIN_RESOURCE_H

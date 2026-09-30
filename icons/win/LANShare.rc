@@ -1,0 +1,3 @@
+#include "resource.h"
+
+IDI_LANSHARE_ICON ICON "icon_128x128.ico"

@@ -1,0 +1,62 @@
+<RCC>
+    <qresource prefix="/">
+        <file>img/ic_phone.png</file>
+        <file>img/ic_win.png</file>
+        <file>img/rc_dir_blue_icon.png</file>
+        <file>img/rc_file_icon_file.png</file>
+        <file>img/LANShare.ico</file>
+        <file>img/ic_launcher.png</file>
+        <file>img/ic_launcher_32.png</file>
+        <file>img/openfile.png</file>
+        <file>img/folder.png</file>
+        <file>img/send.png</file>
+        <file>img/devices.png</file>
+        <file>img/file.png</file>
+        <file>img/link.png</file>
+        <file>img/tips.png</file>
+        <file>img/copy.png</file>
+        <file>img/ic_battery0.png</file>
+        <file>img/ic_battery1.png</file>
+        <file>img/ic_battery2.png</file>
+        <file>img/ic_battery3.png</file>
+        <file>img/ic_battery4.png</file>
+        <file>img/ic_charging.png</file>
+        <file>img/ic_null.png</file>
+    </qresource>
+    <qresource prefix="/web">
+        <file>web/lanshare.html</file>
+        <file>web/js/bootstrap.min.js</file>
+        <file>web/js/bootstrap-notify.min.js</file>
+        <file>web/js/jquery.min.js</file>
+        <file>web/js/lanshare.min.js</file>
+        <file>web/js/lanshareChat.min.js</file>
+        <file>web/js/lightyear.min.js</file>
+        <file>web/js/main.min.js</file>
+        <file>web/js/perfect-scrollbar.min.js</file>
+        <file>web/js/request.min.js</file>
+        <file>web/js/WSCmd.js</file>
+        <file>web/images/exit.png</file>
+        <file>web/images/lanshare.png</file>
+        <file>web/images/wendang.png</file>
+        <file>web/images/wenjianjia_20.png</file>
+        <file>web/images/wenjianjia_60.png</file>
+        <file>web/images/player_play.png</file>
+        <file>web/images/img.png</file>
+        <file>web/images/record.png</file>
+        <file>web/images/folder.png</file>
+        <file>web/images/apps.png</file>
+        <file>web/images/no_network.png</file>
+        <file>web/css/animate.min.css</file>
+        <file>web/css/bootstrap.min.css</file>
+        <file>web/css/lanshare.min.css</file>
+        <file>web/css/style.min.css</file>
+        <file>web/drawable/ic_phone.png</file>
+        <file>web/drawable/ic_win.png</file>
+        <file>web/drawable/rc_file_blue_icon.png</file>
+        <file>web/drawable/rc_file_icon_file.png</file>
+    </qresource>
+    <qresource prefix="/style">
+        <file>style/style_light.qss</file>
+        <file>style/style_dark.qss</file>
+    </qresource>
+</RCC>

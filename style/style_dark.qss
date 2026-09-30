@@ -1,0 +1,211 @@
+/* 通用设置 */
+* {
+    background-color: #2e2e2e; /* 设置背景为深灰色 */
+    color: #dcdcdc;           /* 设置文本颜色为浅灰色 */
+}
+
+/* 窗口 */
+QWidget {
+    background-color: #2e2e2e;
+}
+
+/* 按钮 */
+QPushButton {
+    font: 13px;
+    color: #dcdcdc;
+    background-color: #4a4a4a;
+    border-radius: 5px;
+    height: 25px;
+    width: 110px;
+    border-radius: 3px;
+}
+
+QPushButton:hover {
+    background-color:#5a5a5a;
+}
+
+QPushButton:pressed {
+    background-color:#3a3a3a;
+    padding-left:1px;
+    padding-top:1px;
+}
+
+/* 标签 */
+QLabel {
+    background-color: transparent; /* 标签背景透明 */
+    color: #dcdcdc;
+}
+
+/* 文本输入框 */
+QLineEdit, QTextEdit, QPlainTextEdit {
+    background-color: #3e3e3e;
+    border-radius: 3px;
+    color: #dcdcdc;
+    border: 1px solid #5a5a5a;
+}
+
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
+    border: 1px solid #a0a0a0; /* 仅在获得焦点时显示边框 */
+}
+
+/* 下拉菜单 */
+QComboBox {
+    background-color: #3e3e3e;
+    padding: 3px;
+    border-radius: 3px;
+    color: #dcdcdc;
+    border: 1px solid #5a5a5a;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #3e3e3e;
+    selection-background-color: #5a5a5a;
+}
+
+/* 滚动条 */
+QScrollBar:vertical {
+    background: #3e3e3e;
+    width: 15px;
+    margin: 15px 3px 15px 3px;
+    border-radius: 7px;
+}
+
+QScrollBar::handle:vertical {
+    background: #5a5a5a;
+    min-height: 20px;
+    border-radius: 7px;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    background: #4a4a4a;
+    height: 15px;
+    subcontrol-origin: margin;
+}
+
+QScrollBar::add-line:vertical:hover, QScrollBar::sub-line:vertical:hover {
+    background: #5a5a5a;
+}
+
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: none;
+}
+
+/* 表格 */
+QTableView {
+    background-color: #2e2e2e;
+    gridline-color: #5a5a5a;
+    color: #dcdcdc;
+}
+
+QHeaderView::section {
+    background-color: #4a4a4a;
+    padding: 4px;
+    color: #dcdcdc;
+}
+
+/* 工具提示 */
+QToolTip {
+    background-color: #4a4a4a;
+    color: #dcdcdc;
+    padding: 5px;
+    border-radius: 3px;
+}
+
+QListWidget {
+    background-color: #2e2e2e;
+    color: rgb(51, 51, 51);
+    border: 1px solid #2e2e2e;
+    outline: none;
+}
+
+QListWidget::item {
+    background-color: #2e2e2e;
+}
+
+QListWidget::item:hover {
+    background-color: #5a5a5a;
+}
+
+QListWidget::item:selected {
+    background-color: #4a4a4a;
+    color: #ffffff;
+}
+
+QListWidget#chatListWidget {
+     background-color: #2e2e2e;
+     color: rgb(51, 51, 51);
+     border: 1px solid #2e2e2e;
+     outline: none;
+}
+
+QListWidget#chatListWidget::item {
+    background-color: none;
+}
+
+QListWidget#chatListWidget::item:hover {
+    background-color: none;
+}
+
+QListWidget#chatListWidget::item:selected {
+    background-color: none;
+    border: none;
+}
+
+QListWidget#chatListWidget::item:focus {
+    border: none;
+}
+
+ChatBubbleLeft {
+    background-color: #4a4a4a;
+}
+
+ChatBubbleRight {
+    background-color: #4a4a4a;
+}
+
+/* 菜单 */
+QMenu {
+    background-color: #3e3e3e; /* 设置菜单背景颜色 */
+    border: 1px solid #5a5a5a; /* 设置菜单边框颜色 */
+    padding: 5px;              /* 设置菜单内边距 */
+    border-radius: 5px;        /* 设置菜单边框圆角 */
+}
+
+QMenu::item {
+    background-color: transparent; /* 菜单项背景透明 */
+    padding: 5px 20px;             /* 设置菜单项内边距 */
+    border-radius: 3px;            /* 设置菜单项边框圆角 */
+}
+
+QMenu::item:selected {
+    background-color: #5a5a5a; /* 设置选中菜单项背景颜色 */
+    color: #ffffff;            /* 设置选中菜单项文字颜色 */
+}
+
+QMenu::separator {
+    height: 1px;
+    background: #5a5a5a;
+    margin: 5px 0;
+}
+
+/* 菜单栏 */
+QMenuBar {
+    background-color: #2e2e2e; /* 设置菜单栏背景颜色 */
+    padding: 2px;              /* 设置菜单栏内边距 */
+}
+
+QMenuBar::item {
+    background-color: transparent; /* 菜单项背景透明 */
+    padding: 5px 10px;             /* 设置菜单项内边距 */
+    border-radius: 3px;            /* 设置菜单项边框圆角 */
+}
+
+QMenuBar::item:selected {
+    background-color: #5a5a5a; /* 设置选中菜单项背景颜色 */
+    color: #ffffff;            /* 设置选中菜单项文字颜色 */
+}
+
+QMenuBar::item:pressed {
+    background-color: #4a4a4a; /* 设置按下菜单项背景颜色 */
+    color: #ffffff;            /* 设置按下菜单项文字颜色 */
+}
