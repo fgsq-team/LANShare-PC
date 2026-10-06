@@ -84,7 +84,6 @@ void HttpServer::startServer() {
     while ((tcpClient = tcpServer.accept()) != nullptr) {
         std::thread([tcpClient = std::move(tcpClient), self]() mutable {
             self->newClient(tcpClient.get(), {});
-            tcpClient->close();
         }).detach();
     }
 }
@@ -179,9 +178,45 @@ void HttpServer::newClient(TCPClient *tcpClient, const QString &method) {
     if (!isMatch) {
         response->write404();
     }
-    // TimeTools::sleep_ms(100);
+    // 优雅关闭：先半关闭输出流通知客户端数据已发送完毕，
+    // 等待客户端确认接收完成后再彻底关闭 Socket
+    gracefulClose(tcpClient);
 }
 
 void HttpServer::setRequestFilter(RequestFilter requestFilter) {
     HttpServer::requestFilter = requestFilter;
+}
+
+/**
+ * 优雅关闭 Socket 连接
+ * 先半关闭输出流通知客户端数据已发送完毕，等待客户端关闭连接后再彻底关闭 Socket
+ * 替代固定延时，确保客户端能完整接收响应数据
+ * @param tcpClient 客户端 TCPClient 指针
+ */
+void HttpServer::gracefulClose(TCPClient *tcpClient) {
+    if (!tcpClient) return;
+    int fd = tcpClient->getFd();
+    if (fd < 0) return;
+
+    // 半关闭输出流：发送 FIN 通知客户端"数据已写完"
+    // 此时输入流仍然打开，可以等待客户端的响应
+#if defined(PLATFORM_WINDOWS)
+    shutdown(fd, SD_SEND);
+#else
+    shutdown(fd, SHUT_WR);
+#endif
+
+    // 设置 2s 读超时兜底，防止异常客户端不关闭导致线程卡死
+    struct timeval tv;
+    tv.tv_sec = 2;
+    tv.tv_usec = 0;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char *>(&tv), sizeof(tv));
+
+    // 等待客户端关闭连接（recv 返回 0 表示对端已关闭）
+    // 丢弃客户端可能发送的残余数据
+    char buf[256];
+    while (tcpClient->recv(buf, sizeof(buf)) > 0) {}
+
+    // 彻底关闭 Socket
+    tcpClient->close();
 }

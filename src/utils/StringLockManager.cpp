@@ -7,6 +7,10 @@
 std::map<std::string, std::mutex> stringLocks;
 std::mutex mutex_;
 
+/**
+ * 获取指定键的互斥锁
+ * 若键不存在则自动创建
+ */
 std::mutex &StringLockManager::getStringLock(const std::string &key) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = stringLocks.find(key);

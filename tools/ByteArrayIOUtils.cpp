@@ -5,6 +5,9 @@
 #include "ByteArrayIOUtils.h"
 #include <QtGlobal>
 
+/**
+ * 构造函数，复制 QByteArray 数据
+ */
 ByteArrayIOUtils::ByteArrayIOUtils(QByteArray array) {
     size = array.size();
     byteArray = new mbyte[size];
@@ -12,6 +15,9 @@ ByteArrayIOUtils::ByteArrayIOUtils(QByteArray array) {
 
 }
 
+/**
+ * 设置读写偏移位置
+ */
 mlong ByteArrayIOUtils::setSeek(mlong off) {
     // 确保偏移量在有效范围内
     if (off < 0 || off > size) {
@@ -22,10 +28,16 @@ mlong ByteArrayIOUtils::setSeek(mlong off) {
     return currentPosition; // 返回新的读取位置
 }
 
+/**
+ * 获取当前读写偏移
+ */
 mlong ByteArrayIOUtils::getSeek() {
     return currentPosition;
 }
 
+/**
+ * 读取数据到缓冲区
+ */
 int ByteArrayIOUtils::read(void *buff, int len) {
     if (!buff || len <= 0) {
         return -1; // 返回负值表示参数无效
@@ -42,18 +54,30 @@ int ByteArrayIOUtils::read(void *buff, int len) {
     return (int) bytesToRead; // 返回实际读取的字节数
 }
 
+/**
+ * 写入数据（不支持）
+ */
 int ByteArrayIOUtils::write(const char *buff, int len) {
     return 0;
 }
 
+/**
+ * 获取数据总大小
+ */
 int64_t ByteArrayIOUtils::getFileSize() {
     return size;
 }
 
+/**
+ * 关闭 IO 流
+ */
 void ByteArrayIOUtils::close() {
 
 }
 
+/**
+ * 析构函数
+ */
 ByteArrayIOUtils::~ByteArrayIOUtils() {
     delete byteArray;
 }

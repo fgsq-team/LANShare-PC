@@ -25,10 +25,18 @@
 #include "FileSend.h"
 #include "../version/four/include/FileServer.h"
 #include "ThreadPool.h"
+#include "DeviceManager.hpp"
+#include "UdpProtocol.hpp"
+#include "TcpProtocol.hpp"
+#include "LegacyFileTransfer.hpp"
 
 class FileTransfer;
 class LANShareWindow;
 
+/**
+ * 接收文件请求的数据结构
+ * 用于封装文件接收过程中的相关信息
+ */
 class AcceptFiles {
 public:
     Device device;
@@ -39,6 +47,12 @@ public:
     CustomDataStream *stream;
 };
 
+/**
+ * LAN服务 - 主服务类
+ * 负责协调各个管理器完成局域网通信任务
+ * @author fgsq
+ * @version 1.0
+ */
 class LANShare {
 public:
     // 保存在线的设备
@@ -56,44 +70,51 @@ public:
     int systemVolume = 0;
     bool muted = false;
 
+    // 拆分后的子模块
+    DeviceManager deviceManager;
+    UdpProtocol udpProtocol;
+    TcpProtocol tcpProtocol;
+    LegacyFileTransfer legacyFileTransfer;
+
 public:
+    /**
+     * 构造函数
+     * @param mainWindow 主窗口指针
+     */
     LANShare(LANShareWindow *mainWindow);
 
+    /**
+     * 析构函数
+     */
     ~LANShare();
 
+    /**
+     * 更新本机设备信息列表
+     */
     void updateMDevices();
 
+    /**
+     * 获取在线设备列表
+     * @return 在线设备映射表
+     */
     const std::map<std::string, Device> &getOnLineDevices() const;
 
-public:
+    /**
+     * 获取本机网络设备列表
+     * @return 本机网络设备列表
+     */
     std::vector<Device> getMDevices() const;
 
+    /**
+     * 获取单例实例
+     * @return LANShare 单例指针
+     */
     static LANShare *getInstance();
 
-    static void handleUdp();
-
-    static void createTcpServer();
-
-    static void scannDevice();
-
-    static void handleTcp(std::unique_ptr<TCPClient> tcpClient);
-
-    static void sendFile(const Device &device, std::vector<LFile *> selectFiles, int count);
-
-   static void startNewVersionHandleRecvFile(Device fromDevice, FileTransfer *fileTransfer, std::vector<LFile *> files,
-                                       CustomDataStream *stream, boolean encData, boolean isAgree);
-
-
-    static void startHandleRecvFile(bool accept, const Device &device,
-                                    bool needEncData, const std::vector<LFile *> &files,
-                                    const std::unique_ptr<TCPClient> &tcpClient);
-
-    void broadcastMessage(Device *toDevice, const QString &message, bool isClip, bool shareWS);
-
-    void noticeDeviceOnLineByIp(const QString &ip) const;
-
-    void noticeDeviceOffLineByIp(const QString &ip) const;
-
+    /**
+     * 关闭服务
+     * 通知其他设备本机下线，关闭服务器
+     */
     void close();
 };
 

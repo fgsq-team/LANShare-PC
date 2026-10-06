@@ -9,6 +9,7 @@
 #include "TimeTools.h"
 
 
+/** 构造函数（绑定到指定 IP，启用广播） */
 UDPClient::UDPClient(const QString &ip) {
 #if defined(PLATFORM_WINDOWS)
     WORD sockVision = MAKEWORD(2, 2);
@@ -39,10 +40,12 @@ UDPClient::UDPClient(const QString &ip) {
     }
 }
 
+/** 析构函数 */
 UDPClient::~UDPClient() {
     this->close();
 }
 
+/** 构造函数（指定目标 IP 和端口） */
 UDPClient::UDPClient(const QString &ip, int port) {
 #if defined(PLATFORM_WINDOWS)
     WORD sockVision = MAKEWORD(2, 2);
@@ -64,6 +67,7 @@ UDPClient::UDPClient(const QString &ip, int port) {
     addr.sin_addr.s_addr = inet_addr(ip.toUtf8().data());
 }
 
+/** 向指定 IP 和端口发送数据 */
 int UDPClient::sendto(const QString &ip, int port, const void *buff, int len, int flag) const {
     /* 目的端口和地址 */
     sockaddr_in dst_addr{};
@@ -75,19 +79,23 @@ int UDPClient::sendto(const QString &ip, int port, const void *buff, int len, in
 }
 
 
+/** 向构造时指定的地址发送数据 */
 int UDPClient::send(const void *buff, int len, int flag) {
     return ::sendto(udp_fd, static_cast<const char *>(buff), len, flag, (sockaddr *) &addr, sizeof(addr));
 }
 
+/** 接收数据 */
 int UDPClient::recv(void *buff, int len, int flag) const {
     int i = ::recv(udp_fd, static_cast<char *>(buff), len, flag);
     return i;
 }
 
+/** 完整接收指定长度数据 */
 int UDPClient::recvo(void *buff, size_t len, int flag) const {
     return recvo(buff, 0, len, flag);
 }
 
+/** 完整接收指定长度数据（带偏移） */
 int UDPClient::recvo(void *buff, int index, size_t len, int flag) const {
     auto *tempBuff = (unsigned char *) buff;
     int totalRecv = 0;
@@ -110,6 +118,7 @@ int UDPClient::recvo(void *buff, int index, size_t len, int flag) const {
 }
 
 
+/** 关闭 Socket */
 int UDPClient::close() const {
 #if defined(PLATFORM_WINDOWS)
     return ::closesocket(udp_fd);

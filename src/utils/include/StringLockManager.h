@@ -10,8 +10,20 @@
 #include <map>
 #include <mutex>
 
+/**
+ * 字符串锁管理器
+ * 通过字符串键获取对应的互斥锁，用于细粒度的多线程同步
+ * @author fgsq
+ * @version 1.0
+ */
 class StringLockManager {
 public:
+    /**
+     * 获取指定键的互斥锁
+     * 若键不存在则自动创建
+     * @param key 锁的唯一标识
+     * @return 对应的互斥锁引用
+     */
     static std::mutex &getStringLock(const std::string &key);
 };
 

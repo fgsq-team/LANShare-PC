@@ -6,17 +6,20 @@
 
 #include <sstream>
 
+/** 默认构造函数，创建空字符串 */
 LString::LString() : length(0) {
     str = new char[1];
     str[0] = '\0'; // 添加终止符
 }
 
+/** 构造指定长度的空字符串 */
 LString::LString(const int size) {
     length = size;
     str = new char[length + 1];
     str[length] = '\0'; // 添加终止符
 }
 
+/** 从 C 字符串构造 */
 LString::LString(const char *s) {
     length = std::strlen(s);
     str = new char[length + 1];
@@ -26,6 +29,7 @@ LString::LString(const char *s) {
     str[length] = '\0'; // 添加终止符
 }
 
+/** 拷贝构造函数 */
 LString::LString(const LString &other) {
     length = other.length;
     str = new char[length + 1];
@@ -35,6 +39,7 @@ LString::LString(const LString &other) {
     str[length] = '\0'; // 添加终止符
 }
 
+/** 从 uchar 向量构造 */
 LString::LString(const std::vector<uchar> &s) {
     length = s.size();
     str = new char[length + 1]; // 为字符串分配内存，长度为向量大小加上一个终止符 '\0'
@@ -44,6 +49,7 @@ LString::LString(const std::vector<uchar> &s) {
     str[length] = '\0'; // 添加终止符
 }
 
+/** 从 char 向量构造 */
 LString::LString(const std::vector<char> &s, int size) {
     length = size;
     str = new char[length + 1]; // 为字符串分配内存，长度为向量大小加上一个终止符 '\0'
@@ -53,6 +59,7 @@ LString::LString(const std::vector<char> &s, int size) {
     str[length] = '\0'; // 添加终止符
 }
 
+/** 从 C 字符串截取指定长度构造 */
 LString::LString(const char *s, int size) {
     length = size;
     str = new char[length + 1]; // 为字符串分配内存，长度为向量大小加上一个终止符 '\0'
@@ -62,6 +69,7 @@ LString::LString(const char *s, int size) {
     str[length] = '\0'; // 添加终止符
 }
 
+/** 从另一个 LString 截取指定长度构造 */
 LString::LString(const LString &other, int size) {
     length = size;
     str = new char[length + 1]; // 为字符串分配内存，长度为向量大小加上一个终止符 '\0'
@@ -71,10 +79,12 @@ LString::LString(const LString &other, int size) {
     str[length] = '\0'; // 添加终止符
 }
 
+/** 析构函数 */
 LString::~LString() {
     delete[] str;
 }
 
+/** 赋值运算符 */
 LString &LString::operator=(const LString &other) {
     if (this != &other) {
         delete[] str;
@@ -85,6 +95,7 @@ LString &LString::operator=(const LString &other) {
     return *this;
 }
 
+/** 字符串拼接 */
 LString LString::operator+(const LString &other) const {
     LString temp;
     temp.length = length + other.length;
@@ -122,6 +133,7 @@ LString LString::operator+(const LString &other) const {
 //     length += otherLength;                             // 更新字符串长度
 //     return *this;
 // }
+/** 追加字符串 */
 LString &LString::operator+=(const LString &other) {
     int newLength = length + other.length;
     char *newStr = new char[newLength + 1]; // 新字符串的长度为两个字符串的长度之和，再加上终止符 '\0'
@@ -133,6 +145,7 @@ LString &LString::operator+=(const LString &other) {
     return *this;
 }
 
+/** 追加字符 */
 LString &LString::operator+=(const char other) {
     char *newStr = new char[length + 2]; // 新字符串的长度为当前字符串的长度加上一个字符和终止符 '\0'
     if (length > 0) {
@@ -146,6 +159,7 @@ LString &LString::operator+=(const char other) {
     return *this;
 }
 
+/** 追加字符串（流式） */
 LString &LString::operator<<(const LString &other) {
     int newLength = length + other.length;
     char *newStr = new char[newLength + 1]; // 新字符串的长度为两个字符串的长度之和，再加上终止符 '\0'
@@ -157,6 +171,7 @@ LString &LString::operator<<(const LString &other) {
     return *this;
 }
 
+/** 追加字符（流式） */
 LString &LString::operator<<(const char other) {
     char *newStr = new char[length + 2]; // 新字符串的长度为当前字符串的长度加上一个字符和终止符 '\0'
     if (length > 0) {
@@ -170,73 +185,88 @@ LString &LString::operator<<(const char other) {
     return *this;
 }
 
+/** 下标访问（可变） */
 char &LString::operator[](int index) {
     return str[index];
 }
 
+/** 下标访问（只读） */
 const char &LString::operator[](int index) const {
     return str[index];
 }
 
+/** C 字符串 + LString */
 LString operator+(const char *lhs, const LString &rhs) {
     return LString(lhs) + rhs;
 }
 
+/** 内容相等比较 */
 bool LString::operator==(const LString &other) const {
     // 实现比较逻辑，比如比较字符串内容是否相等
     return strcmp(str, other.str) == 0;
 }
 
+/** 字典序小于比较 */
 bool LString::operator<(const LString &other) const {
     // 实现比较逻辑，比如比较字符串内容的字典顺序
     return strcmp(str, other.str) < 0;
 }
 
+/** 字典序大于比较 */
 bool LString::operator>(const LString &other) const {
     // 实现比较逻辑，比如比较字符串内容的字典顺序
     return strcmp(other.str, str) < 0;
 }
 
+/** 将 int 格式化为字符串 */
 LString LString::formatNumber(int number) {
     std::ostringstream oss;
     oss << number;
     return {oss.str().c_str()};
 }
 
+/** 将 long long 格式化为字符串 */
 LString LString::formatNumber(long long number) {
     std::ostringstream oss;
     oss << number;
     return {oss.str().c_str()};
 }
 
+/** 将 float 格式化为字符串 */
 LString LString::formatNumber(float number) {
     std::ostringstream oss;
     oss << number;
     return {oss.str().c_str()};
 }
 
+/** 将 double 格式化为字符串 */
 LString LString::formatNumber(double number) {
     std::ostringstream oss;
     oss << number;
     return {oss.str().c_str()};
 }
 
+/** 转换为 uchar 向量 */
 std::vector<uchar> LString::toByteArray() const {
     return {str, str + length};
 }
 
+/** 获取字符串长度 */
 int LString::getLength() const {
     return length;
 }
 
+/** 获取 C 字符串指针 */
 char *LString::getCString() const {
     return str;
 }
 
+/** 转换为 std::string */
 std::string LString::getStdString() const {
     return str;
 }
 
+/** 判断是否以指定前缀开头 */
 bool LString::startsWith(const LString &prefix) const {
     if (length < prefix.length) {
         return false;
@@ -249,6 +279,7 @@ bool LString::startsWith(const LString &prefix) const {
     return true;
 }
 
+/** 判断内容是否相等 */
 bool LString::equals(const LString &other) const {
     if (length != other.length) {
         return false;
@@ -256,6 +287,7 @@ bool LString::equals(const LString &other) const {
     return std::strcmp(str, other.str) == 0;
 }
 
+/** 转换为小写 */
 LString LString::toLowerCase() const {
     LString result(*this); // 创建一个新对象，使用当前对象的内容进行初始化
     for (int i = 0; i < result.length; ++i) {
@@ -264,6 +296,7 @@ LString LString::toLowerCase() const {
     return result;
 }
 
+/** 转换为大写 */
 LString LString::toUpperCase() const {
     LString result(*this); // 创建一个新对象，使用当前对象的内容进行初始化
     for (int i = 0; i < result.length; ++i) {
@@ -272,10 +305,12 @@ LString LString::toUpperCase() const {
     return result;
 }
 
+/** 截取子字符串（从起始位置到末尾） */
 LString LString::substring(int startIndex) const {
     return substring(startIndex, length - 1);
 }
 
+/** 截取子字符串 */
 LString LString::substring(int startIndex, int endIndex) const {
     if (startIndex < 0 || startIndex >= length || endIndex < 0 || endIndex >= length || startIndex > endIndex) {
         return {};
@@ -287,6 +322,7 @@ LString LString::substring(int startIndex, int endIndex) const {
     return {subStr};
 }
 
+/** 查找子字符串首次出现的位置 */
 int LString::indexOf(const LString &subStr) const {
     for (int i = 0; i <= length - subStr.length; ++i) {
         bool found = true;
@@ -303,6 +339,7 @@ int LString::indexOf(const LString &subStr) const {
     return -1;
 }
 
+/** 从指定位置查找子字符串首次出现的位置 */
 int LString::indexOf(const LString &subStr, int startIndex) const {
     for (int i = startIndex; i <= length - subStr.length; ++i) {
         bool found = true;
@@ -319,6 +356,7 @@ int LString::indexOf(const LString &subStr, int startIndex) const {
     return -1;
 }
 
+/** 查找子字符串最后出现的位置 */
 int LString::lastIndexOf(const LString &subStr) const {
     for (int i = length - subStr.length; i >= 0; --i) {
         bool found = true;
@@ -335,6 +373,7 @@ int LString::lastIndexOf(const LString &subStr) const {
     return -1;
 }
 
+/** 查找字符最后出现的位置 */
 int LString::lastIndexOf(const char subChar) const {
     for (int i = length - 1; i >= 0; --i) {
         if (str[i] == subChar) {
@@ -344,6 +383,7 @@ int LString::lastIndexOf(const char subChar) const {
     return -1;
 }
 
+/** 按字符串分隔符分割 */
 std::vector<LString> LString::split(const LString &delimiter) const {
     std::vector<LString> result;
     int startIndex = 0;
@@ -360,6 +400,7 @@ std::vector<LString> LString::split(const LString &delimiter) const {
     return result;
 }
 
+/** 按字符分隔符分割 */
 std::vector<LString> LString::split(char delimiter) const {
     std::vector<LString> result;
     int start = 0;
@@ -374,22 +415,27 @@ std::vector<LString> LString::split(char delimiter) const {
     return result;
 }
 
+/** 转换为 long long */
 long long LString::toLongLong() const {
     return std::strtol(str, nullptr, 10);
 }
 
+/** 字典序比较 */
 int LString::compare(const LString &other) const {
     return std::strcmp(str, other.str);
 }
 
+/** 判断是否包含子字符串 */
 bool LString::contains(const LString &subStr) const {
     return std::strstr(str, subStr.str) != nullptr;
 }
 
+/** 删除从指定位置到末尾的字符 */
 LString LString::remove(int startIndex) const {
     return remove(startIndex, length - 1);
 }
 
+/** 删除指定范围的字符 */
 LString LString::remove(int startIndex, int count) const {
     if (startIndex < 0 || startIndex >= length || count <= 0) {
         // 如果起始索引超出范围或者删除的字符数为非正数，则直接返回原字符串
@@ -411,6 +457,7 @@ LString LString::remove(int startIndex, int count) const {
     return result;
 }
 
+/** 删除首次出现的子字符串 */
 LString LString::remove(const LString &subStr) const {
     int index = indexOf(subStr); // 找到子字符串的起始位置
     if (index == -1) {
@@ -428,6 +475,7 @@ LString LString::remove(const LString &subStr) const {
     return result;
 }
 
+/** 替换首次出现的子字符串 */
 void LString::replace(const LString &oldSubStr, const LString &newSubStr) {
     int index = indexOf(oldSubStr); // 找到要替换的子字符串的位置
     if (index != -1) {
@@ -450,6 +498,7 @@ void LString::replace(const LString &oldSubStr, const LString &newSubStr) {
     }
 }
 
+/** 追加指定数量的字符 */
 void LString::append(int count, char c) {
     // 检查 count 是否为非负数
     if (count < 0) {
@@ -472,6 +521,7 @@ void LString::append(int count, char c) {
     length += count;
 }
 
+/** 判断是否为空字符串 */
 bool LString::isEmpty() const {
     return length == 0;
 }

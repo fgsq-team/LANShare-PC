@@ -34,33 +34,53 @@ bool LWebSocketServer::isControlFrame(int frame) const {
 }
 
 QByteArray LWebSocketServer::readFrame() {
-    char curByte = (char) tcpClient->read();
-    char mask = (char) tcpClient->read();
-    bool isFin = (curByte & 0x80) != 0;
-    int opcode = curByte & 0xF;
-    // 检查接收错误
-    if ((curByte & 0x70) > 0) {
-        return {};
-    }
-    int frameLength = static_cast<int>(getFrameLength(mask));
-    if (isControlFrame(opcode) && (isFin || frameLength > 125)) {
-        return {};
-    }
-    if (opcode == OPCODE_TEXT || opcode == OPCODE_BINARY) {
-        QByteArray masks(4, '\0');
-        tcpClient->recv(masks.data(), 4);
-        QByteArray data(frameLength, '\0');
-        tcpClient->recv(data.data(), frameLength);
-        for (int i = 0; i < data.size(); ++i) {
-            data[i] = data[i] ^ masks[i & 0x3];
+    while (true) {
+        char curByte = (char) tcpClient->read();
+        char mask = (char) tcpClient->read();
+        bool isFin = (curByte & 0x80) != 0;
+        int opcode = curByte & 0xF;
+        // 检查保留位错误
+        if ((curByte & 0x70) > 0) {
+            return {};
         }
-        return data;
-    } else if (opcode == OPCODE_PING) {
-        qDebug() << "ping";
-    } else if (opcode == OPCODE_PONG) {
-        qDebug() << "pong";
+        int frameLength = static_cast<int>(getFrameLength(mask));
+        // 控制帧必须 FIN=1 且 payload <= 125
+        if (isControlFrame(opcode) && (!isFin || frameLength > 125)) {
+            return {};
+        }
+        if (opcode == OPCODE_TEXT || opcode == OPCODE_BINARY) {
+            QByteArray masks(4, '\0');
+            tcpClient->recv(masks.data(), 4);
+            QByteArray data(frameLength, '\0');
+            tcpClient->recv(data.data(), frameLength);
+            for (int i = 0; i < data.size(); ++i) {
+                data[i] = data[i] ^ masks[i & 0x3];
+            }
+            return data;
+        } else if (opcode == OPCODE_PING) {
+            // 心跳保活：收到 PING，回复 PONG（携带相同 payload）
+            QByteArray masks(4, '\0');
+            tcpClient->recv(masks.data(), 4);
+            QByteArray data(frameLength, '\0');
+            tcpClient->recv(data.data(), frameLength);
+            for (int i = 0; i < data.size(); ++i) {
+                data[i] = data[i] ^ masks[i & 0x3];
+            }
+            sendFrame(data, OPCODE_PONG);
+            // 继续读取下一帧，不返回空以免调用方误判断连
+            continue;
+        } else if (opcode == OPCODE_PONG) {
+            // 收到 PONG，忽略，继续读取下一帧
+            continue;
+        } else if (opcode == OPCODE_CLOSE) {
+            // 收到关闭帧，回送 CLOSE 帧后关闭连接
+            sendFrame(QByteArray(), OPCODE_CLOSE);
+            close();
+            return {};
+        }
+        // 未知 opcode，忽略
+        return {};
     }
-    return {};
 }
 
 qint64 LWebSocketServer::getFrameLength(char mask) {

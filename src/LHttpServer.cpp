@@ -32,6 +32,7 @@ struct MediaFolder {
 
 int SEND_MSSAGE = 1;
 int SYNC_DEVICE_LIST = 2;
+int CHANGE_THEME = 3;  // WebSocket 主题变更命令标识
 // Paths
 QStringList paths = {
         "/apps",
@@ -106,6 +107,39 @@ void scanImages() {
             mediaFolders[forderIndex++] = mediaFolder;
         }
     }).detach();
+}
+
+/**
+ * 向所有 WebSocket 客户端推送主题变更通知
+ * 消息格式：{"cmd": 3, "theme": "xxx"}
+ */
+QJsonArray LHttpServer::webMenus;
+
+void LHttpServer::sendTheme() {
+    std::mutex &websocket_mutex = StringLockManager::getStringLock("websockets");
+    websocket_mutex.lock();
+    auto it = websockets.begin();
+    while (it != websockets.end()) {
+        if ((*it)->isClosed()) {
+            delete (*it);
+            it = websockets.erase(it);
+        } else {
+            QJsonObject jsonObject;
+            jsonObject["cmd"] = CHANGE_THEME;
+            // 将内部主题名称映射为网页端主题枚举
+            QString themeName = Config::instance().themeName;
+            if (themeName.isEmpty()) {
+                themeName = "follow_system";
+            }
+            jsonObject["theme"] = themeName;
+            QJsonDocument rdoc;
+            rdoc.setObject(jsonObject);
+            QByteArray jsonString = rdoc.toJson(QJsonDocument::Compact);
+            (*it)->sendString(jsonString);
+            ++it;
+        }
+    }
+    websocket_mutex.unlock();
 }
 
 void LHttpServer::sendDeviceList() {
@@ -233,6 +267,11 @@ void composeZip(zip_t *zip, int pathPrefix, const QString &path) {
 }
 
 LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
+    // webMenus.append(QJsonObject{{"key", "apps"},    {"text", "软件"},     {"icon", "nav-item-media-apps"}});
+    webMenus.append(QJsonObject{{"key", "media"},   {"text", "图片"},     {"icon", "nav-item-media-img"}});
+    webMenus.append(QJsonObject{{"key", "files"},   {"text", "文件列表"}, {"icon", "nav-item-media-folder"}});
+    webMenus.append(QJsonObject{{"key", "chat"},    {"text", "消息记录"}, {"icon", "nav-item-media-record"}});
+    // webMenus.append(QJsonObject{{"key", "draw"},    {"text", "远程绘图"}, {"icon", "nav-item-media-record"}});
     scanImages();
     httpServer = std::make_unique<HttpServer>();
     httpServer->setRequestFilter([](Request *request, Response *response, HttpHandler httpHandler) {
@@ -347,6 +386,14 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
     httpServer->addPath("/initConfig", [](Request *request, Response *response) {
         QJsonObject object;
         object["rootPath"] = DEFAULT_WEB_ROOT_FILE_PATH;
+        // 添加当前主题配置
+        QString themeName = Config::instance().themeName;
+        if (themeName.isEmpty()) {
+            themeName = "follow_system";
+        }
+        object["theme"] = themeName;
+        object["menus"] = webMenus;
+
         QString token = request->getHeaderValue("token");
         bool flag = false;
         TokenDBUtil &tokenDBUtil = TokenDBUtil::instance();
@@ -381,6 +428,7 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
         }
         object["token"] = token;
         object["pass"] = flag;
+        object["name"] = Config::instance().clientName;
         QJsonDocument jsonDocument(object);
         QString jsonString = jsonDocument.toJson(QJsonDocument::Compact);
         response->writeString(jsonString);
@@ -405,13 +453,13 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
                 bool isClip = jsonObject.value("isClip").toBool();
                 QString userName = "全部设备";
                 if (selectedDevice.isEmpty()) {
-                    LANShare::getInstance()->broadcastMessage(nullptr, message, isClip, false);
+                    LANShare::getInstance()->udpProtocol.broadcastMessage(nullptr, message, isClip, false);
                 } else {
                     std::string selectedDev = selectedDevice.toStdString();
                     std::map<std::string, Device> devices = LANShare::getInstance()->getOnLineDevices();
                     if (devices.count(selectedDev) > 0) {
                         Device device = devices[selectedDev];
-                        LANShare::getInstance()->broadcastMessage(&device, message, isClip, false);
+                        LANShare::getInstance()->udpProtocol.broadcastMessage(&device, message, isClip, false);
                         userName = device.getDevName();
                     }
                 }
@@ -434,9 +482,13 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
     });
 
     // 下载压缩后的文件
-    httpServer->addPath("/downloadZipFile/*", [](Request *request, Response *response) {
+    httpServer->addPath("/downloadZipFile", [](Request *request, Response *response) {
         QString tempFile = request->getPathParam("tempFile");
         QFile file(Config::instance().saveFilePath + CACHE_DIR + "/" + tempFile);
+        QString fileName = QFileInfo(file).fileName();
+        response->addHeader("Content-Disposition",
+                            "attachment; filename=\"" + fileName + "\"; filename*=UTF-8''" +
+                            QUrl::toPercentEncoding(fileName));
         response->writeFile(file);
         file.remove();
     });
@@ -557,7 +609,7 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
             file->setFileName(uploadInputStream.getFileName());
             file->setIsDirectory(false);
             selectFiles.push_back(file);
-            LANShare::sendFile(device, selectFiles, 1);
+            LANShare::getInstance()->legacyFileTransfer.sendFile(device, selectFiles, 1);
             response->writeString(
                     QString("文件上传成功，大小: ") + Utils::computeSize(uploadInputStream.getFileSize()).c_str());
             return;

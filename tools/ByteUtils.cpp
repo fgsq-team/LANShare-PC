@@ -5,17 +5,26 @@
 #include "ByteUtils.h"
 #include "Type.h"
 
+/**
+ * 复制字节数组
+ */
 void ByteUtils::ByteArrCopy(const mbyte *d, int d_index, mbyte *t, int t_index, int length) {
     for (int i = 0; i < length; i++) {
         t[t_index + i] = d[d_index + i];
     }
 }
 
+/**
+ * short 转字节数组（大端序）
+ */
 void ByteUtils::shortToBytes(short i, mbyte *b) {
     b[0] = static_cast<mbyte>((i >> 8) & 0xFF);
     b[1] = static_cast<mbyte>(i & 0xFF);
 }
 
+/**
+ * 字节数组转 short（大端序）
+ */
 short ByteUtils::bytesToShort(const mbyte *buf, int offset) {
     short i = 0;
     i = static_cast<short>(i | ((buf[offset] & 0xFF) << 8));
@@ -23,6 +32,9 @@ short ByteUtils::bytesToShort(const mbyte *buf, int offset) {
     return i;
 }
 
+/**
+ * int 转字节数组（大端序）
+ */
 void ByteUtils::intToBytes(int i, mbyte *b, int index) {
     b[0 + index] = (mbyte) ((i >> 24) & 0xFF);
     b[1 + index] = (mbyte) ((i >> 16) & 0xFF);
@@ -30,6 +42,9 @@ void ByteUtils::intToBytes(int i, mbyte *b, int index) {
     b[3 + index] = (mbyte) (i & 0xFF);
 }
 
+/**
+ * 字节数组转 int（大端序）
+ */
 int ByteUtils::bytesToInt(mbyte *buf, int offset) {
     int i = 0;
     i = i | ((buf[offset] & 0xFF) << 24);
@@ -43,6 +58,9 @@ int ByteUtils::bytesToInt(mbyte *buf, int offset) {
  * long to byte[]
  */
 
+/**
+ * long 转字节数组（大端序）
+ */
 void ByteUtils::longToBytes(mlong i, mbyte *b, int index) {
     b[0 + index] = (mbyte) ((i >> 56) & 0xFF);
     b[1 + index] = (mbyte) ((i >> 48) & 0xFF);
@@ -54,6 +72,9 @@ void ByteUtils::longToBytes(mlong i, mbyte *b, int index) {
     b[7 + index] = (mbyte) (i & 0xFF);
 }
 
+/**
+ * 字节数组转 long（大端序）
+ */
 mlong ByteUtils::bytesToLong(mbyte *buf, int offset) {
     mlong i = 0;
     i = i | (((mlong) buf[offset] & 0xFF) << 56)

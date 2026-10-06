@@ -23,6 +23,9 @@
 #include <objc/objc-runtime.h>
 #endif
 
+/**
+ * AES-256 解密消息
+ */
 QString mUtils::decMessage(const QString &message,const QString& key) {
     QAESEncryption encryption(QAESEncryption::AES_256, QAESEncryption::ECB, QAESEncryption::PKCS7);
     QByteArray input(message.toUtf8());
@@ -31,6 +34,9 @@ QString mUtils::decMessage(const QString &message,const QString& key) {
 }
 
 
+/**
+ * AES-256 加密消息
+ */
 QByteArray mUtils::encMessage(const QString &message,const QString& key) {
     QAESEncryption encryption(QAESEncryption::AES_256, QAESEncryption::ECB, QAESEncryption::PKCS7);
     QByteArray input(message.toUtf8());
@@ -39,6 +45,9 @@ QByteArray mUtils::encMessage(const QString &message,const QString& key) {
 }
 
 
+/**
+ * 判断系统是否为暗色模式
+ */
 bool mUtils::isDarkMode() {
     bool isDark = false;
 
@@ -61,6 +70,9 @@ bool mUtils::isDarkMode() {
     return isDark;
 }
 
+/**
+ * 从 QSS 样式表中解析指定属性颜色
+ */
 QColor mUtils::parseColorFromStyleSheet(QString styleSheet, const QString &className, const QString &propertyName) {
     QString pattern = QString(R"(%1\s*\{[^}]*\s+%2\s*:\s*([^;]+);)").arg(className, propertyName.trimmed());
     QRegularExpression regex(pattern);
@@ -73,6 +85,9 @@ QColor mUtils::parseColorFromStyleSheet(QString styleSheet, const QString &class
     return Qt::white;
 }
 
+/**
+ * 递归创建多级目录
+ */
 QString mUtils::createMultipleFolders(const QString &path) {
     QDir dir(path);
     if (dir.exists(path)) {
@@ -91,6 +106,9 @@ QString mUtils::createMultipleFolders(const QString &path) {
     return parentDir + SEPARATORS + dirName;
 }
 
+/**
+ * 设置或取消文件右键关联菜单
+ */
 void mUtils::setFileAssociation(bool del) {
     if (del) {
 #if defined(PLATFORM_WINDOWS)
@@ -128,6 +146,9 @@ void mUtils::setFileAssociation(bool del) {
     }
 }
 
+/**
+ * 文件去重，若文件已存在则自动添加序号后缀
+ */
 QString mUtils::avoidDuplication(const QFileInfo &outFile) {
     QString name = outFile.fileName();
     if (outFile.exists()) {
@@ -150,6 +171,9 @@ QString mUtils::avoidDuplication(const QFileInfo &outFile) {
 }
 
 
+/**
+ * 创建空文件（原子写入）
+ */
 void mUtils::createEmptyFileWithSaveFile(const QString& filename) {
     QSaveFile file(filename);
     if (file.open(QIODevice::WriteOnly)) {
@@ -157,6 +181,9 @@ void mUtils::createEmptyFileWithSaveFile(const QString& filename) {
     }
 }
 
+/**
+ * 加密数据（异或+位移）
+ */
 void mUtils::encData(mbyte *buffer, int len, int off, mlong index) {
     int j = 0;
     for (int i = off; i < len + off; i++) {
@@ -166,6 +193,9 @@ void mUtils::encData(mbyte *buffer, int len, int off, mlong index) {
     }
 }
 
+/**
+ * 解密数据（异或+位移）
+ */
 void mUtils::decData(mbyte *buffer, int len, int off, mlong index) {
     int j = 0;
     for (int i = off; i < len + off; i++) {

@@ -19,6 +19,9 @@
 #include <sys/time.h>
 #endif
 
+/**
+ * 获取格式化的当前时间字符串
+ */
 std::string TimeTools::getFormatTime()
 {
     char str_time[20];
@@ -32,6 +35,9 @@ std::string TimeTools::getFormatTime()
     return str_time;
 }
 
+/**
+ * 休眠指定秒数
+ */
 void TimeTools::sleep_s(int s) {
 #if defined(PLATFORM_WINDOWS)
     Sleep((s * 1000));
@@ -40,6 +46,9 @@ void TimeTools::sleep_s(int s) {
 #endif
 }
 
+/**
+ * 休眠指定毫秒数
+ */
 void TimeTools::sleep_ms(int ms) {
 #if defined(PLATFORM_WINDOWS)
     Sleep(ms);
@@ -48,11 +57,17 @@ void TimeTools::sleep_ms(int ms) {
 #endif
 }
 
+/**
+ * 休眠指定微秒数
+ */
 void TimeTools::sleep_us(int us) {
     struct timeval delay{0,us};
     select(0, nullptr, nullptr, nullptr, &delay);
 }
 
+/**
+ * 获取当前时间戳（毫秒级）
+ */
 mlong TimeTools::getCurrentTime() {
 #if defined(PLATFORM_WINDOWS)
     timeb now{};

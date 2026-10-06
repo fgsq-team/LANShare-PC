@@ -1,1 +1,0 @@
-console.log(encodeURI("http://ss.com/但是"))

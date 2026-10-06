@@ -6,11 +6,13 @@
 #include "UDPServer.h"
 
 
+/** 析构函数 */
 UDPServer::~UDPServer() {
     close();
 }
 
 
+/** 构造函数，创建 UDP Socket 并绑定端口 */
 UDPServer::UDPServer(int port) : port(port) {
 #if defined(PLATFORM_WINDOWS)
     WORD sockVision = MAKEWORD(2, 2);
@@ -46,6 +48,7 @@ UDPServer::UDPServer(int port) : port(port) {
     }
 }
 
+/** 向指定 IP 和端口发送数据 */
 int UDPServer::sendto(const QString &ip, int clientPort, const void *buff, size_t len, int flag) const {
     sockaddr_in clientAddr{};
     clientAddr.sin_family = AF_INET;
@@ -55,14 +58,17 @@ int UDPServer::sendto(const QString &ip, int clientPort, const void *buff, size_
 }
 
 
+/** 向指定地址发送数据 */
 int UDPServer::sendto(CLIENT_ADDR *src_addr, const void *buff, size_t len, int flag) const {
     return ::sendto(udp_fd, static_cast<const char *>(buff), (int) len, flag, (sockaddr *) src_addr, addr_len);
 }
 
+/** 接收数据 */
 int UDPServer::recv(void *buff, size_t len, int flag) const {
     return ::recv(udp_fd, static_cast<char *>(buff), (int)len, flag);
 }
 
+/** 完整接收指定长度数据 */
 int UDPServer::recvo(void *buff, size_t len, int flag) const {
     auto *tempBuff = (unsigned char *) buff;
     int totalRecv = 0;
@@ -83,6 +89,7 @@ int UDPServer::recvo(void *buff, size_t len, int flag) const {
 }
 
 
+/** 接收数据并获取发送方地址 */
 int UDPServer::recv(CLIENT_ADDR *src_addr, void *buff, size_t len, int flag) {
 #if defined(PLATFORM_WINDOWS)
     return ::recvfrom(udp_fd, static_cast<char *>(buff), (int)len, flag, (sockaddr *) src_addr, &addr_len);
@@ -92,6 +99,7 @@ int UDPServer::recv(CLIENT_ADDR *src_addr, void *buff, size_t len, int flag) {
 #endif
 }
 
+/** 完整接收指定长度数据并获取发送方地址 */
 int UDPServer::recvo(CLIENT_ADDR *src_addr, void *buff, size_t len, int flag) {
     auto *tempBuff = (unsigned char *) buff;
     int totalRecv = 0;
@@ -119,6 +127,7 @@ int UDPServer::recvo(CLIENT_ADDR *src_addr, void *buff, size_t len, int flag) {
 }
 
 
+/** 关闭 Socket */
 int UDPServer::close() const {
 #if defined(PLATFORM_WINDOWS)
     return ::closesocket(udp_fd);

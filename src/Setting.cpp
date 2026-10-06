@@ -3,6 +3,7 @@
 #include "LANShareWindow.h"
 #include "Config.hpp"
 #include "TranslationManager.h"
+#include "LHttpServer.h"
 #include <QFileDialog>
 #include <QDebug>
 #include <QMainWindow>
@@ -56,6 +57,10 @@ Setting::Setting(QWidget *parent) : QWidget(parent),
     }
 }
 
+/**
+ * 主题切换槽函数
+ * 根据选中的单选按钮更新主题配置，并通知所有网页客户端切换主题
+ */
 void Setting::onThemeRadioButtonClicked() {
     QAbstractButton *button = themeRadio->checkedButton();
     if (button == ui->radioButton_dark) {
@@ -71,6 +76,8 @@ void Setting::onThemeRadioButtonClicked() {
     qDebug() << "themeName:" << Config::instance().themeName;
     QSettings *settings = Config::instance().getSettings();
     settings->setValue(THEME, Config::instance().themeName);
+    // 通知所有已连接的网页客户端切换主题
+    LHttpServer::sendTheme();
 }
 
 Setting::~Setting() {

@@ -61,8 +61,8 @@ void processFilesInFolder(int subNameLength, const std::string &folderPath, std:
 
 
 int main() {
-    std::string folderPath = R"(D:\Project\C++\LANShare-PC\web)";
-    std::ofstream outputFile("D:\\Project\\C++\\LANShare-PC\\build-tools\\res2cpp\\resource1.cpp");
+    std::string folderPath = R"(D:\Project\LANShare-PC\web)";
+    std::ofstream outputFile("D:\\Project\\LANShare-PC\\build-tools\\res2cpp\\resource1.cpp");
     if (!outputFile) {
         std::cerr << "Failed to create resource.cpp" << std::endl;
         return 1;
@@ -125,11 +125,11 @@ int main() {
     outputFile << "    return fileEntr.fileSize;" << std::endl;
     outputFile << "}" << std::endl;
 
-    int fd = openData("web/css/animate.min.css");
-    char ten;
-    readData(fd, &ten, 0, 1);
-    std::cout << "fd:" << fd << std::endl;
-    std::cout << "ten:" << (int) ten << std::endl;
+    // int fd = openData("web/css/animate.min.css");
+    // char ten;
+    // readData(fd, &ten, 0, 1);
+    // std::cout << "fd:" << fd << std::endl;
+    // std::cout << "ten:" << (int) ten << std::endl;
     return 0;
 }
 

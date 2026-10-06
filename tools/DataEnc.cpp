@@ -5,16 +5,20 @@
 #include "DataEnc.h"
 #include "ByteUtils.h"
 
+/** 默认构造函数 */
 DataEnc::DataEnc() = default;
 
+/** 构造函数 */
 DataEnc::DataEnc(mbyte *bytes, int bytelen) {
     setData(bytes, bytelen);
 }
 
+/** 获取包头大小 */
 int DataEnc::headerSize() {
     return HEADER_LEN;
 }
 
+/** 设置数据缓冲区 */
 void DataEnc::setData(mbyte *bytes, int bytelen) {
     if (bytes != nullptr) {
         m_bytes = bytes;
@@ -22,19 +26,23 @@ void DataEnc::setData(mbyte *bytes, int bytelen) {
     }
 }
 
+/** 设置命令字 */
 void DataEnc::setCmd(int cmd) {
     putInt(cmd, 0);
 }
 
+/** 设置字节型命令字 */
 void DataEnc::setByteCmd(mbyte cmd) {
     putByte(cmd, 0);
 }
 
 
+/** 设置计数器 */
 void DataEnc::setCount(int count) {
     putInt(count, 4);
 }
 
+/** 设置数据长度 */
 void DataEnc::setLength(int length) {
     putInt(length, 8);
 }
@@ -147,15 +155,18 @@ int DataEnc::getDataLen() const {
     return index;
 }
 
+/** 重置写入位置 */
 void DataEnc::reset() {
     index = HEADER_LEN;
 }
 
+/** 获取打包后的数据 */
 mbyte *DataEnc::getData() {
     setLength(index - HEADER_LEN);
     return m_bytes;
 }
 
+/** 加密并返回数据 */
 mbyte *DataEnc::encData() {
     if (dataEncrypted) {
         return m_bytes;

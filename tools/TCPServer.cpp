@@ -4,13 +4,16 @@
 
 #include "TCPServer.h"
 
+/** 构造函数 */
 TCPServer::TCPServer(int port) : port(port) {
 }
 
+/** 析构函数 */
 TCPServer::~TCPServer() {
     this->close();
 }
 
+/** 绑定并监听 IPv4 和 IPv6 端口 */
 int TCPServer::bind() {
 #if defined(PLATFORM_WINDOWS)
     WSADATA wsaData;
@@ -85,6 +88,7 @@ int TCPServer::bind() {
     return 1;
 }
 
+/** 接受客户端连接（返回原始 fd） */
 mFd TCPServer::acceptFd() {
     fd_set readfds;
     FD_ZERO(&readfds);
@@ -119,6 +123,7 @@ mFd TCPServer::acceptFd() {
     return -1; // Shouldn't reach here
 }
 
+/** 接受客户端连接 */
 std::unique_ptr<TCPClient> TCPServer::accept() {
     mFd newClient = acceptFd();
     if (newClient == -1) {
@@ -127,6 +132,7 @@ std::unique_ptr<TCPClient> TCPServer::accept() {
     return std::make_unique<TCPClient>(newClient);
 }
 
+/** 关闭服务器 */
 int TCPServer::close() const {
 #if defined(PLATFORM_WINDOWS)
     ::closesocket(ipv4_fd);

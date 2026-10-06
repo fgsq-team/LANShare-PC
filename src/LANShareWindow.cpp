@@ -34,7 +34,9 @@ LANShareWindow *lanShareWindow = nullptr;
 
 void LANShareWindow::showDeviceSelecter(std::vector<LFile *> &fileaPaths) {
     auto *deviceSelecter = new DeviceSelecter([fileaPaths](const Device &device) {
-        std::thread tSendfile(LANShare::sendFile, device, fileaPaths, fileaPaths.size());
+        std::thread tSendfile([device, fileaPaths]() {
+            LANShare::getInstance()->legacyFileTransfer.sendFile(device, fileaPaths, fileaPaths.size());
+        });
         tSendfile.detach();
     }, false, LANShare::getInstance(), this);
     deviceSelecter->show();
@@ -275,7 +277,7 @@ void LANShareWindow::sendMessage(bool isClip) {
     auto *item = new QListWidgetItem(ui->chatListWidget);
     dealMessage(messageW, item);
     ui->chatListWidget->scrollToBottom();
-    LANShare::getInstance()->broadcastMessage(currentDevice.getDevName().isEmpty() ? nullptr : &currentDevice, msg,
+    LANShare::getInstance()->udpProtocol.broadcastMessage(currentDevice.getDevName().isEmpty() ? nullptr : &currentDevice, msg,
                                               isClip, true);
     ui->textEdit->setFocus();
     MessageDB &messageDb = MessageDB::instance();
@@ -719,7 +721,7 @@ void LANShareWindow::requstRecvFiles(AcceptFiles *acceptFiles) {
     std::thread([ret, acceptFiles]() mutable {
         // 适配旧版本
         if (acceptFiles->device.getDataVersion() < DATA_VERSION_4) {
-            LANShare::startHandleRecvFile(
+            LANShare::getInstance()->legacyFileTransfer.startHandleRecvFile(
                 ret == QMessageBox::Yes,
                 acceptFiles->device,
                 acceptFiles->needEncData,
@@ -727,7 +729,7 @@ void LANShareWindow::requstRecvFiles(AcceptFiles *acceptFiles) {
                 std::move(acceptFiles->tcpClient)
             );
         } else {
-            LANShare::startNewVersionHandleRecvFile(
+            LANShare::getInstance()->legacyFileTransfer.startNewVersionHandleRecvFile(
                 acceptFiles->device,
                 acceptFiles->fileTransfer,
                 acceptFiles->files,

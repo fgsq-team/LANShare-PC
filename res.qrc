@@ -61,6 +61,7 @@
         <file>web/css/bootstrap.min.css</file>
         <file>web/css/lanshare.min.css</file>
         <file>web/css/style.min.css</file>
+        <file>web/css/theme.css</file>
         <file>web/drawable/ic_phone.png</file>
         <file>web/drawable/ic_win.png</file>
         <file>web/drawable/rc_file_blue_icon.png</file>

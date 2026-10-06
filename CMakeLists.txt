@@ -55,6 +55,7 @@ include_directories(
         "src/version/four/include"
         "src/utils/include"
         "src/include"
+        "src/manager/include"
         "tools/include"
         "httpserver/include"
         "zip/"
@@ -110,7 +111,7 @@ add_executable(
 )
 
 # 资源打包到二进制文件工具
-add_executable(res2cpp build-tools/res2cpp/resource.cpp build-tools/res2cpp/res2cpp.cpp)
+add_executable(res2cpp build-tools/res2cpp/res2cpp.cpp)
 
 if (WIN32)
     set(SOURCE_FILES icons/win/LANShare.rc)

@@ -24,6 +24,9 @@
 #include <sstream>
 #include <iomanip>
 
+/**
+ * 设置文本到系统剪切板
+ */
 bool Utils::SetClipboardText(const char *str) {
 #if defined(PLATFORM_WINDOWS)
     if (::OpenClipboard(nullptr)) {
@@ -119,6 +122,9 @@ void SendUnicode(wchar_t data) {
     }
 }*/
 
+/**
+ * 根据文件路径获取文件名称
+ */
 std::string Utils::GetPathName(const std::string &path) {
     std::string::size_type iPos;
     if (strstr(path.c_str(), "\\")) {
@@ -134,6 +140,9 @@ std::string formatDobleValue(double val, int fixed) {
     return str.substr(0, str.find('.') + fixed + 1);
 }
 
+/**
+ * 将字节数转换为可读的文件大小字符串
+ */
 std::string Utils::computeSize(int64_t size) {
     if (size <= 0) return "0B";
     const char *units[] = {"B", "KB", "MB", "GB", "TB"};
@@ -144,6 +153,9 @@ std::string Utils::computeSize(int64_t size) {
     return formattedString.str();
 }
 
+/**
+ * 设置系统音量
+ */
 bool Utils::setVolum(int level) {
 #if defined(PLATFORM_WINDOWS)
     HRESULT hr;
@@ -250,10 +262,16 @@ int Utils::volume() {
     return 0;
 }
 
+/**
+ * 生成 UUID
+ */
 QString Utils::getUUID() {
     return QUuid::createUuid().toString().remove("{").remove("}").remove("-");
 }
 
+/**
+ * URL 解码
+ */
 LString Utils::urlDecode(const LString &input) {
     LString decoded;
     for (std::size_t i = 0; i < input.getLength(); ++i) {
@@ -282,6 +300,9 @@ LString Utils::urlDecode(const LString &input) {
     return decoded;
 }
 
+/**
+ * 判断文件是否为图片
+ */
 bool Utils::isPhoto(const QString& fileName) {
     int lastDotIndex = fileName.lastIndexOf('.');
     if (lastDotIndex != -1) {

@@ -37,6 +37,13 @@ private:
 private:
     void sortPath();
 
+    /**
+     * 优雅关闭 Socket 连接
+     * 先半关闭输出流通知客户端数据已发送完毕，等待客户端关闭连接后再彻底关闭 Socket
+     * @param tcpClient 客户端 TCPClient 指针
+     */
+    static void gracefulClose(TCPClient *tcpClient);
+
 };
 
 

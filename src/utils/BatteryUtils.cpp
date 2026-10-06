@@ -13,6 +13,9 @@
 #endif
 #if defined(PLATFORM_LINUX)
 // 获取电池设备路径
+/**
+ * 获取电池设备路径（Linux 平台）
+ */
 QString getBatteryPath() {
     QDir powerSupplyDir("/sys/class/power_supply");
     if (!powerSupplyDir.exists()) {
@@ -37,6 +40,9 @@ QString getBatteryPath() {
 }
 
 // 读取文件内容的工具函数
+/**
+ * 读取文件内容（Linux 平台）
+ */
 QString readFileContent(const QString &path)
 {
     QFile file(path);
@@ -54,6 +60,9 @@ QString readFileContent(const QString &path)
 #endif
 
 
+/**
+ * 获取电池电量百分比
+ */
 int BatteryUtils::getBatteryPercentage()
 {
 #if defined(PLATFORM_WINDOWS)
@@ -125,6 +134,9 @@ int BatteryUtils::getBatteryPercentage()
 #endif
 }
 
+/**
+ * 获取电池充电状态
+ */
 int BatteryUtils::getBatteryStatus()
 {
 #if defined(PLATFORM_WINDOWS)

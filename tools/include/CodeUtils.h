@@ -10,22 +10,33 @@
 #include <QString>
 #include "Type.h"
 
+/**
+ * 编码工具类
+ * 提供字符编码转换和字符串长度计算等操作
+ * @author fgsq
+ * @version 1.0
+ */
 class CodeUtils {
 public:
-    // utf8תgbk
+    /**
+     * UTF-8 转 GBK（已废弃，返回 nullptr）
+     * @param srcStr 源字符串
+     * @return nullptr
+     */
     static char* UTFToGBK(const QString& srcStr);
 
-    // gbkתutf-8
-//    static QString Gbk2Utf8(QString gbkStr);
-//
-//    // �ַ�ת���ַ�
-//    static wstring CharToWchar(const char *c, size_t m_encode = CP_ACP);
-//
-//    // ���ַ�ת�ַ�
-//    static string WcharToChar(const wchar_t *wp, size_t m_encode = CP_ACP);
-
+    /**
+     * 计算 GBK 字符串的字符数
+     * @param str GBK 编码的字符串
+     * @return 字符数
+     */
     static int getGbkStrLen(const char *str);
 
+    /**
+     * 计算 UTF-8 字符串的字符数
+     * @param str UTF-8 编码的字符串
+     * @return 字符数
+     */
     static int getUtf8StrLen(const char *str);
 };
 

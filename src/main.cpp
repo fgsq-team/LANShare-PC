@@ -88,13 +88,13 @@ int main(int argc, char *argv[]) {
     LANShareWindow w;
     LANShare lanShare(&w);
     // TCP 文件接收线程
-    std::thread tTcpServer(LANShare::createTcpServer);
+    std::thread tTcpServer([&lanShare]() { lanShare.tcpProtocol.createTcpServer(); });
     tTcpServer.detach();
     // UDP 接收命令线程
-    std::thread tRunRecive(LANShare::handleUdp);
+    std::thread tRunRecive([&lanShare]() { lanShare.udpProtocol.handleUdp(); });
     tRunRecive.detach();
     // 扫描设备线程
-    std::thread tScannDevice(LANShare::scannDevice);
+    std::thread tScannDevice([&lanShare]() { lanShare.deviceManager.scannDevice(); });
     tScannDevice.detach();
     w.setWindowTitle("LANShare");
     w.show();

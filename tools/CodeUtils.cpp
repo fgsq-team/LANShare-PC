@@ -5,6 +5,9 @@
 #include "CodeUtils.h"
 
 
+/**
+ * UTF-8 转 GBK（已废弃）
+ */
 char *CodeUtils::UTFToGBK(const QString& str) {
     /*QTextCodec *utf8 = QTextCodec::codecForName("UTF-8");
     QTextCodec::setCodecForLocale(utf8); // 设置本地编码
@@ -55,6 +58,9 @@ string CodeUtils::WcharToChar(const wchar_t *wp, size_t m_encode) {
 }
 */
 
+/**
+ * 计算 UTF-8 字符串的字符数
+ */
 int CodeUtils::getUtf8StrLen(const char *str) {
     if (!str) return 0;
 
@@ -87,6 +93,9 @@ int CodeUtils::getUtf8StrLen(const char *str) {
 }
 
 
+/**
+ * 计算 GBK 字符串的字符数
+ */
 int CodeUtils::getGbkStrLen(const char *str) {
     const char *p = str;        //p���ں������
     while (*p)                    //���ǽ�����0�������ѭ��

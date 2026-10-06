@@ -7,21 +7,26 @@
 #include <QtGlobal>
 
 
+/** 默认构造函数 */
 TCPClient::TCPClient() {
     setConnected(false);
 }
 
+/** 构造函数（已连接 fd） */
 TCPClient::TCPClient(int tcp_fd) : tcp_fd(tcp_fd) {
     setConnected(true);
 }
 
+/** 构造函数（指定 IP 和端口） */
 TCPClient::TCPClient(QString ip, int port) : ip(std::move(ip)), port(port) {
 
 }
 
+/** 析构函数 */
 TCPClient::~TCPClient() {
 }
 
+/** 获取对端 IP 地址 */
 QString TCPClient::getRemoteIP() const {
        sockaddr_storage addr; // 使用 sockaddr_storage 来兼容 IPv4 和 IPv6
     socklen_t len = sizeof(addr);
@@ -48,6 +53,7 @@ QString TCPClient::getRemoteIP() const {
     return ipStr; // 返回 IP 地址字符串
 }
 
+/** 发起 TCP 连接 */
 bool TCPClient::connect() {
     tcp_fd = (int) socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in servAddr{};
@@ -66,14 +72,17 @@ bool TCPClient::connect() {
     }
 }
 
+/** 发送数据 */
 int TCPClient::send(const void *buff, int len, int flag) const {
     return ::send(tcp_fd, static_cast<const char *>(buff), len, flag);
 }
 
+/** 发送单字节 */
 int TCPClient::send(char b) const {
     return send(&b, 1);
 }
 
+/** 读取单字节 */
 int TCPClient::read() const {
     char r = 0;
     int rel = recv(&r, 1);
@@ -83,14 +92,17 @@ int TCPClient::read() const {
     return r;
 }
 
+/** 接收数据 */
 int TCPClient::recv(void *buff, int len, int flag) const {
     return ::recv(tcp_fd, static_cast<char *>(buff), len, flag);
 }
 
+/** 完整接收指定长度数据 */
 int TCPClient::recvo(void *buff, size_t len, int flag) const {
     return recvo(buff, 0, len, flag);
 }
 
+/** 完整接收指定长度数据（带偏移） */
 int TCPClient::recvo(void *buff, int index, size_t len, int flag) const {
     auto *tempBuff = (unsigned char *) buff;
     int totalRecv = 0;
@@ -113,6 +125,7 @@ int TCPClient::recvo(void *buff, int index, size_t len, int flag) const {
 }
 
 
+/** 关闭连接 */
 int TCPClient::close()  {
 #if defined(PLATFORM_WINDOWS)
     return ::closesocket(tcp_fd);
@@ -121,15 +134,18 @@ int TCPClient::close()  {
 #endif
 }
 
+/** 获取 Socket fd */
 int TCPClient::getFd() const {
     return tcp_fd;
 }
 
 
+/** 设置 Socket fd */
 void TCPClient::setFd(int fd) {
     tcp_fd = fd;
 }
 
+/** 跳过指定字节数 */
 mlong TCPClient::skip(mlong l) const {
     char buffer[1024];
     size_t totalBytesSkipped = 0;
@@ -150,10 +166,12 @@ mlong TCPClient::skip(mlong l) const {
     return (mlong) totalBytesSkipped;
 }
 
+/** 获取连接状态 */
 bool TCPClient::isConnected() const {
     return connected;
 }
 
+/** 设置连接状态 */
 void TCPClient::setConnected(bool isConnected) {
     TCPClient::connected = isConnected;
 }
