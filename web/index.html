@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>右上角弹出消息</title>
+    <style>
+        #message-box {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background-color: #333;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            display: none;
+            transition: opacity 0.5s, transform 0.5s;
+        }
+
+        #message-box.hidden {
+            opacity: 0;
+            transform: translateY(-20px);
+        }
+        #message-box.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        #show-message {
+            margin: 20px;
+        }
+    </style>
+</head>
+<body>
+<div id="message-box" class="hidden">这是一个弹出消息！</div>
+<button id="show-message">显示消息</button>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+    $(document).ready(function() {
+        $('#show-message').click(function() {
+            var $messageBox = $('#message-box');
+            $messageBox.removeClass('hidden').addClass('visible').fadeIn();
+
+            // 3秒后隐藏消息框
+            setTimeout(function() {
+                $messageBox.fadeOut(function() {
+                    $messageBox.removeClass('visible').addClass('hidden');
+                });
+            }, 3000);
+        });
+    });
+</script>
+</body>
+</html>

@@ -54,33 +54,41 @@ void DeviceItem::setDevice(const Device &device) {
         QPixmap pixmap(":/img/ic_launcher_32.png");
         iconLabel->setPixmap(pixmap.scaled(32, 32, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     }
-    QPixmap pixmap;
-    if (chargeStatus == 1) {
-        pixmap = {":/img/ic_charging.png"};
-        batteryTextLabel->setStyleSheet("QLabel { color : #00bd0d; }");
-    } else {
-        int batteryLevel = device.getBatteryLevel();
-        if (batteryLevel > 80 && batteryLevel <= 100) {
-            pixmap = {":/img/ic_battery4.png"};
+    if (device.getBatteryLevel() > 0) {
+        batteryLabel->setVisible(true);
+        batteryTextLabel->setVisible(true);
+        QPixmap pixmap;
+        if (chargeStatus == 1) {
+            pixmap = {":/img/ic_charging.png"};
             batteryTextLabel->setStyleSheet("QLabel { color : #00bd0d; }");
-        } else if (batteryLevel > 60) {
-            pixmap = {":/img/ic_battery3.png"};
-            batteryTextLabel->setStyleSheet("QLabel { color : #00bd0d; }");
-        } else if (batteryLevel > 40) {
-            pixmap = {":/img/ic_battery2.png"};
-            batteryTextLabel->setStyleSheet("QLabel { color : #65a30d; }");
-        } else if (batteryLevel > 10) {
-            pixmap = {":/img/ic_battery1.png"};
-            batteryTextLabel->setStyleSheet("QLabel { color : #eab308; }");
-        } else if (batteryLevel > 0) {
-            pixmap = {":/img/ic_battery0.png"};
-            batteryTextLabel->setStyleSheet("QLabel { color : #dc2626; }");
         } else {
-            pixmap = {":/img/ic_null.png"};
-            batteryTextLabel->setStyleSheet("QLabel { color : #00000000; }");
+            int batteryLevel = device.getBatteryLevel();
+            if (batteryLevel > 80 && batteryLevel <= 100) {
+                pixmap = {":/img/ic_battery4.png"};
+                batteryTextLabel->setStyleSheet("QLabel { color : #00bd0d; }");
+            } else if (batteryLevel > 60) {
+                pixmap = {":/img/ic_battery3.png"};
+                batteryTextLabel->setStyleSheet("QLabel { color : #00bd0d; }");
+            } else if (batteryLevel > 40) {
+                pixmap = {":/img/ic_battery2.png"};
+                batteryTextLabel->setStyleSheet("QLabel { color : #65a30d; }");
+            } else if (batteryLevel > 10) {
+                pixmap = {":/img/ic_battery1.png"};
+                batteryTextLabel->setStyleSheet("QLabel { color : #eab308; }");
+            } else if (batteryLevel > 0) {
+                pixmap = {":/img/ic_battery0.png"};
+                batteryTextLabel->setStyleSheet("QLabel { color : #dc2626; }");
+            } else {
+                pixmap = {":/img/ic_null.png"};
+                batteryTextLabel->setStyleSheet("QLabel { color : #00000000; }");
+            }
         }
+        batteryLabel->setPixmap(pixmap.scaled(20, 20, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    } else {
+        batteryLabel->setHidden(true);
+        batteryTextLabel->setHidden(true);
     }
-    batteryLabel->setPixmap(pixmap.scaled(20, 20, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+
     batteryLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     iconLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     batteryTextLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);

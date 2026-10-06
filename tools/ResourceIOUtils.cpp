@@ -6,7 +6,7 @@
 
 extern int openData(const std::string &resName);
 
-extern int readData(int fd, char *buff, long offset, int len);
+extern int readData(int fd, char *buff, mlong offset, int len);
 
 extern long getFileSize(int fd);
 

@@ -73,12 +73,16 @@ public:
     }
 
 protected:
-    bool eventFilter(QObject *obj, QEvent *event) {
+    bool eventFilter(QObject *obj, QEvent *event) override {
         auto *textEdit = dynamic_cast<QTextEdit *>(obj);
         if (event->type() == QEvent::MouseButtonPress) {
             auto *mouseEvent = dynamic_cast<QMouseEvent *>(event);
             if (mouseEvent->button() == Qt::RightButton) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
                 menu(mouseEvent->globalPosition().toPoint());
+#else
+                menu(mouseEvent->globalPos());
+#endif
                 return true;
             }
         } else if (event->type() == QEvent::ToolTip) {

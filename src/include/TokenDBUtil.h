@@ -6,6 +6,8 @@
 #define LANSHARE_TOKENDBUTIL_H
 
 #include <QtSql>
+#include <QThread>
+#include <mutex>
 #include "Token.h"
 
 class TokenDBUtil {
@@ -19,27 +21,26 @@ public:
 
     ~TokenDBUtil();
 
-    void updateName(const QString &token, const QString &name) const;
+    void addToken(const QString &token, bool custom, const QString &ip);
 
-    void setPass(const QString &token, int pass) const;
+    QString queryToken(const QString &token);
 
-    void addToken(const QString &token, bool custom, int pass, const QString &ip, const QString &name) const;
+    Token queryCustomIp(const QString &customIp);
 
-    Token queryToken(const QString &token) const;
+    QList<Token> queryList();
 
-    Token queryCustomIp(const QString &customIp) const;
-
-    QList<Token> queryList() const;
-
-    void deleteToken(const QString &id) const;
+    void deleteToken(const QString &id);
 
 private:
-    void createTable() const;
+    void createTable();
 
+    QSqlDatabase getThreadLocalDb();
 
 private:
     QSqlDatabase database;
     QSqlQuery *sql_query;
+    std::mutex dbMutex;
+    QThread *ownerThread;
 };
 
 #endif //LANSHARE_TOKENDBUTIL_H

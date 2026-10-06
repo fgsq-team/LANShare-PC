@@ -7,8 +7,8 @@
 
 #include <QString>
 #include <ostream>
+#include <QJsonObject>
 
-#include "LWebSocketServer.h"
 #include "Type.h"
 
 class Device {
@@ -19,7 +19,6 @@ public:
     static const int L_LINUX = 3;
     static const int L_MAC = 4;
     static const int L_IOS = 5;
-    static const int L_WEB = 6;
 
 private:
     QString devName; // 设备名称
@@ -34,11 +33,8 @@ private:
     int dataVersion = 0; // 通讯协议版本
     int batteryLevel = -1; //
     mbyte chargeStatus = -1;
-    bool canRemove = true;
 
 public:
-    LWebSocketServer *webSocketServer;
-
     const QString &getUniqueUUid() const;
 
     void setUniqueUUid(const QString &uniqueUUid);
@@ -87,13 +83,9 @@ public:
 
     void setChargeStatus(mbyte chargeStatus);
 
-    LWebSocketServer *getWebSocketServer() const;
+    QJsonObject toJsonObject();
 
-    void setWebSocketServer(LWebSocketServer *webSocketServer);
-
-    void setCanRemove(bool canRemove);
-
-    bool getCanRemove() const;
+    void fromJsonObject(QJsonObject jsonObject);
 };
 
 

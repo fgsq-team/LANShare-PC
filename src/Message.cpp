@@ -1,10 +1,15 @@
 
 #include "Message.h"
 #include "Device.h"
+#include <QPaintEvent>
+#include <QDateTime>
+#include <QPainter>
 #include <QMovie>
 #include <QLabel>
 #include <QTextItem>
+#include <QGraphicsTextItem>
 #include <QVBoxLayout>
+#include <QtGlobal>
 #include <QTextBlock>
 #include <utility>
 
@@ -41,10 +46,11 @@ void Message::initView() {
     m_textLabel->document()->adjustSize();
     // 设置气泡背景颜色和边框
     QString bubbleStyle = QString(
-            "QTextBrowser { selection-background-color: dodgerblue; selection-color: white;background-color: %1; border-radius: 10px; padding: 10px;border: none;}")
-            .arg(left
-                 ? config.chatBubblColorLeft.color().name()
-                 : config.chatBubblColorRight.color().name());
+            "QTextBrowser { selection-background-color: %1; selection-color: %2;background-color: %3; border-radius: 10px; padding: 10px;border: none;}")
+            .arg(Config::instance().selectionBgColor.name(), Config::instance().selectionTextColor.name(),
+                 left
+                 ? Config::instance().chatBubblColorLeft.color().name()
+                 : Config::instance().chatBubblColorRight.color().name());
     m_textLabel->setStyleSheet(bubbleStyle);
     auto *textLayout = new QVBoxLayout;
     textLayout->setContentsMargins(0, 5, 0, 5);
@@ -54,16 +60,14 @@ void Message::initView() {
     }
     textLayout->addWidget(m_nicknameLabel);
     textLayout->addWidget(m_textLabel);
-    QHBoxLayout *mainLayout;
-    mainLayout = new QHBoxLayout(this);
+    textLayout->setAlignment(m_textLabel, Qt::AlignLeft);  // 确保头像在顶部对齐
+    auto *mainLayout = new QHBoxLayout(this);
     mainLayout->setContentsMargins(0, 5, 0, 5);
     if (left) {
-        textLayout->setAlignment(m_textLabel, Qt::AlignLeft);  // 确保头像在顶部对齐
         mainLayout->addWidget(m_avatarLabel, 0, Qt::AlignTop);  // 确保头像在顶部对齐
         mainLayout->addLayout(textLayout);
         mainLayout->addStretch();
     } else {
-        textLayout->setAlignment(m_textLabel, Qt::AlignRight);  // 确保头像在顶部对齐
         mainLayout->addStretch();
         mainLayout->addLayout(textLayout);
         mainLayout->addWidget(m_avatarLabel, 0, Qt::AlignTop);  // 确保头像在顶部对齐
@@ -73,7 +77,7 @@ void Message::initView() {
 }
 
 void Message::adjustTextWidth() {
-    int maxWidth = static_cast<int>(parentWidget()->width() * 0.8);
+    int maxWidth = (int) (parentWidget()->width() * 0.8);
     if (maxWidth > 500) {
         maxWidth = 500;
     }
@@ -81,7 +85,7 @@ void Message::adjustTextWidth() {
     QTextDocument *textDocument = m_textLabel->document();
     QSize docSize = textDocument->size().toSize();
     m_textLabel->setFixedHeight(docSize.height() + 20);
-    m_textLabel->setFixedWidth(static_cast<int>(textDocument->idealWidth() + 21));
+    m_textLabel->setFixedWidth((int) (textDocument->idealWidth() + 21));
 }
 
 QSize Message::sizeHint() const {
@@ -141,10 +145,11 @@ void Message::setDevMode(int devMode) {
 void Message::changeEvent(QEvent *event) {
     if (event->type() == QEvent::StyleChange) {
         QString bubbleStyle = QString(
-                "QTextBrowser { selection-background-color: dodgerblue; selection-color: white;background-color: %1; border-radius: 10px; padding: 10px;border: none;}")
-                .arg(left
-                     ? config.chatBubblColorLeft.color().name()
-                     : config.chatBubblColorRight.color().name());
+                "QTextBrowser { selection-background-color: %1; selection-color: %2;background-color: %3; border-radius: 10px; padding: 10px;border: none;}")
+                .arg(Config::instance().selectionBgColor.name(), Config::instance().selectionTextColor.name(),
+                     left
+                     ? Config::instance().chatBubblColorLeft.color().name()
+                     : Config::instance().chatBubblColorRight.color().name());
         m_textLabel->setStyleSheet(bubbleStyle);
     }
     QWidget::changeEvent(event);

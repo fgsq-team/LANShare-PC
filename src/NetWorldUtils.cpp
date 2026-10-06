@@ -4,7 +4,7 @@
 
 #include <QString>
 #include "Device.h"
-#include "Config.h"
+#include "Config.hpp"
 #include <cstdio>
 #include <list>
 #include "NetWorldUtils.h"
@@ -23,9 +23,13 @@
 
 // QString ip 转int ip
 uint NetWorldUtils::strIP2intIP(const QString &strIp) {
-    uchar ip[4];
-    sscanf(strIp.toStdString().c_str(), "%hhu.%hhu.%hhu.%hhu", &ip[0], &ip[1], &ip[2], &ip[3]);
-    int intIp = ByteUtils::bytesToInt((mbyte *) ip, 0);
+    QStringList parts = strIp.split('.');
+    uchar bytes[4];
+    bytes[0] = (uchar)parts[0].toInt();
+    bytes[1] = (uchar)parts[1].toInt();
+    bytes[2] = (uchar)parts[2].toInt();
+    bytes[3] = (uchar)parts[3].toInt();
+    int intIp = ByteUtils::bytesToInt((mbyte *) bytes, 0);
     return *(uint *) &intIp;
 }
 
@@ -139,13 +143,13 @@ std::vector<Device> NetWorldUtils::getDevices() {
                         QString ip = pIpAddrString->IpAddress.String;
                         QString mask = pIpAddrString->IpMask.String;
                         Device device;
-                        device.setDevName(config.clientName);
+                        device.setDevName(Config::instance().clientName);
                         device.setDevIp(ip);
                         device.setDevNetMask(mask);
                         device.setDevBrotIp(GetBroadcastIP(ip, mask));
-                        device.setDevPort(config.tcpPort);
+                        device.setDevPort(Config::instance().tcpPort);
                         device.setDevMode(Device::L_WIN);
-                        device.setDataVersion(DATA_VERSION);
+                        device.setDataVersion(DATA_VERSION_3);
                         device.setTraffic(getAdapterTraffic(pAdapter->Index));
                         device.setBatteryLevel(batteryLevel);
                         device.setChargeStatus(static_cast<mbyte>(chargeStatus));
@@ -189,11 +193,11 @@ std::vector<Device> NetWorldUtils::getDevices() {
                 continue;
             }
             Device device;
-            device.setDevName(config.clientName);
+            device.setDevName(Config::instance().clientName);
             device.setDevIp(ip);
             device.setDevNetMask(mask);
             device.setDevBrotIp(GetBroadcastIP(ip, mask));
-            device.setDevPort(config.tcpPort);
+            device.setDevPort(Config::instance().tcpPort);
             device.setDevMode(Device::L_WIN);
             device.setDataVersion(DATA_VERSION);
             device.setBatteryLevel(batteryLevel);

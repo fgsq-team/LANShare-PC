@@ -9,8 +9,10 @@
 #include <QString>
 #include "Type.h"
 #include "MTCPClient.h"
-#include "Config.h"
+#include "Config.hpp"
 
+
+class CustomDataStream;
 
 class LFile {
 public:
@@ -19,7 +21,8 @@ public:
         BYTEARRAY,
         STREAM
     };
-public:
+
+    QString fileId;
     QByteArray byteArray;
     IOInter *ioInter;
     QString path;
@@ -30,13 +33,17 @@ public:
     int index;
     QString uuid;
     MTCPClient *mioUtil = nullptr;
+    CustomDataStream *customDataStream = nullptr;
     bool nextStep = true;
-    std::list<LFile> fileList;
+    std::vector<LFile> fileList;
     mlong mediaId = -1L;
     TYPE type = FILE;
     int fileType = FILE_FILE;
+    int progress = 0;
 
     LFile();
+
+    void cancelFileTransfer();
 
     int getFileType() const;
 
@@ -90,14 +97,31 @@ public:
 
     void setSubFileCount(int subFileCount);
 
-    const std::list<LFile> &getFileList() const;
+    const std::vector<LFile> &getFileList() const;
 
-    void setFileList(const std::list<LFile> &fileList);
+    void setFileList(const std::vector<LFile> &fileList);
 
     mlong getMediaId() const;
 
 
     void setMediaId(mlong mediaId);
+
+    void setProgress(int progress);
+
+    int getProgress() const;
+
+    void setCustomDataStream(CustomDataStream *customDataStream);
+
+    CustomDataStream *getCustomDataStream() const;
+
+    [[nodiscard]] QString getFileId() const;
+
+    void setFileId(const QString &file_id);
+
+    static mlong findFile(std::vector<LFile> &listFile, mlong size, const QString &path);
+
+    static mlong findFileNew(std::vector<LFile> &listFile, mlong size, const QString &path, const QString &basePath);
+
 };
 
 

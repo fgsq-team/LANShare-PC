@@ -9,7 +9,7 @@
 #include "MessageDB.h"
 #include "MessageFile.h"
 #include "TimeTools.h"
-#include "Config.h"
+#include "Config.hpp"
 #include "StringLockManager.h"
 
 #define DB_VERSION 2
@@ -19,7 +19,7 @@ MessageDB::MessageDB() {
         database = QSqlDatabase::database("message");
     } else {
         database = QSqlDatabase::addDatabase("QSQLITE", "message");
-        database.setDatabaseName(config.lanshareWorkDirPath + "/message_v" + QString::number(DB_VERSION) + ".db");
+        database.setDatabaseName(Config::instance().lanshareWorkDirPath + "/message_v" + QString::number(DB_VERSION) + ".db");
         database.setUserName("lanshare");
         database.setPassword("uacvbtyaw");
     }
@@ -235,7 +235,7 @@ std::list<Message *> MessageDB::queryList(int pageSize, int pageCount, QWidget *
             bool recviced = sql_query->value(index++).toBool();
             bool isVideo = sql_query->value(index++).toBool();
             QString videoTime = sql_query->value(index++).toString();
-            long fileSize = sql_query->value(index++).toLongLong();
+            mlong fileSize = sql_query->value(index++).toLongLong();
             QString fileSizeStr = sql_query->value(index++).toString();
             QString createTime = sql_query->value(index++).toString();
             mlong timeStamp = sql_query->value(index++).toLongLong();
@@ -244,9 +244,9 @@ std::list<Message *> MessageDB::queryList(int pageSize, int pageCount, QWidget *
                 auto *msg = new MessageFile(messageEnc, deviceName, devMode, left, isfile, parent);
                 msg->setFileSize(fileSize);
                 msg->setFileSizeStr(fileSizeStr);
+                msg->setFilePath(filePath);
                 msg->setCompleted(completed);
                 msg->setRecviced(true);
-                msg->setFilePath(filePath);
                 msg->setUuid(id);
                 messageList.push_back(msg);
             } else if (messageType == MESSAGE_TYPE) {

@@ -1,13 +1,14 @@
 #include "TokenDBUtil.h"
-#include "Config.h"
+#include "Config.hpp"
 #include "StringLockManager.h"
+#include <QThread>
 
-TokenDBUtil::TokenDBUtil() {
-    if (QSqlDatabase::contains("token_list_v2")) {
-        database = QSqlDatabase::database("token_list_v2");
+TokenDBUtil::TokenDBUtil() : ownerThread(QThread::currentThread()) {
+    if (QSqlDatabase::contains("token_list_new")) {
+        database = QSqlDatabase::database("token_list_new");
     } else {
-        database = QSqlDatabase::addDatabase("QSQLITE", "token_list_v2");
-        database.setDatabaseName(config.lanshareWorkDirPath + "/token_list_v2.db");
+        database = QSqlDatabase::addDatabase("QSQLITE", "token_list_new");
+        database.setDatabaseName(Config::instance().lanshareWorkDirPath + "/token_list_new.db");
         database.setUserName("lanshare");
         database.setPassword("uacvbtyaw");
     }
@@ -26,108 +27,84 @@ TokenDBUtil::~TokenDBUtil() {
     delete sql_query;
 }
 
-void TokenDBUtil::updateName(const QString &token, const QString &name) const {
-    if (!database.isOpen()) {
-        return;
+QSqlDatabase TokenDBUtil::getThreadLocalDb() {
+    // 如果在主线程（创建连接的线程），直接返回原始连接
+    if (QThread::currentThread() == ownerThread) {
+        return database;
     }
-    sql_query->prepare("UPDATE token SET name = :name WHERE id = :id AND isdel = 0");
-    sql_query->bindValue(":name", name);
-    sql_query->bindValue(":id", token);
-    if (!sql_query->exec()) {
-        qCritical() << "Failed to update name for token:" << token << sql_query->lastError().text();
+    // 在工作线程中，创建线程独立的连接
+    QString connName = "token_list_thread_" + QString::number(reinterpret_cast<quintptr>(QThread::currentThread()));
+    if (!QSqlDatabase::contains(connName)) {
+        auto db = QSqlDatabase::addDatabase("QSQLITE", connName);
+        db.setDatabaseName(Config::instance().lanshareWorkDirPath + "/token_list_new.db");
+        db.setUserName("lanshare");
+        db.setPassword("uacvbtyaw");
+        if (!db.open()) {
+            qDebug() << "线程数据库打开失败:" << connName;
+        }
     }
+    return QSqlDatabase::database(connName);
 }
 
-void TokenDBUtil::setPass(const QString &token, int pass) const {
-    if (!database.isOpen()) {
-        return;
-    }
-    sql_query->prepare("UPDATE token SET pass = :pass WHERE id = :id AND isdel = 0");
-    sql_query->bindValue(":pass", pass);
-    sql_query->bindValue(":id", token);
-    if (!sql_query->exec()) {
-        qCritical() << "Failed to update pass for token:" << token << sql_query->lastError().text();
-    }
-}
-
-void TokenDBUtil::addToken(const QString &token, bool custom, int pass, const QString &ip, const QString &name) const {
-    if (!database.isOpen()) {
-        return;
-    }
-    sql_query->prepare(
-        "INSERT INTO token (id, custom, pass , ip,  name, isdel) VALUES (:id, :custom, :pass, :ip, :name, 0)");
+void TokenDBUtil::addToken(const QString &token, bool custom, const QString &ip) {
+    std::lock_guard<std::mutex> lock(dbMutex);
+    sql_query->prepare("INSERT INTO token (id, custom, ip, isdel) VALUES (:id, :custom, :ip, 0)");
     sql_query->bindValue(":id", token);
     sql_query->bindValue(":custom", custom ? 1 : 0);
-    sql_query->bindValue(":pass", pass);
     sql_query->bindValue(":ip", ip);
-    sql_query->bindValue(":name", name);
     if (!sql_query->exec()) {
         qCritical() << "Failed to add token:" << token << sql_query->lastError().text();
     }
 }
 
-Token TokenDBUtil::queryToken(const QString &token) const {
-    if (!database.isOpen()) {
-        return {true};
+QString TokenDBUtil::queryToken(const QString &token) {
+    std::lock_guard<std::mutex> lock(dbMutex);
+    QSqlDatabase db = getThreadLocalDb();
+    QSqlQuery query(db);
+    query.prepare("SELECT id FROM token WHERE id = :token AND isdel = 0");
+    query.bindValue(":token", token);
+    if (query.exec() && query.next()) {
+        return query.value(0).toString();
     }
-    std::mutex &queryTokenLock = StringLockManager::getStringLock("queryToken");
-    std::lock_guard lock(queryTokenLock); // 自动锁定 mtx
-    sql_query->prepare("SELECT id,ip,name,custom,pass FROM token WHERE id = :token AND isdel = 0");
-    sql_query->bindValue(":token", token);
-    if (sql_query->exec() && sql_query->next()) {
-        Token t;
-        t.setToken(sql_query->value(0).toString());
-        t.setIp(sql_query->value(1).toString());
-        t.setName(sql_query->value(2).toString());
-        t.setCustom(sql_query->value(3).toInt() == 1);
-        t.setPass(sql_query->value(4).toInt());
-        return t;
-    }
-    return {true};
+    return {};
 }
 
-Token TokenDBUtil::queryCustomIp(const QString &customIp) const {
-    if (!database.isOpen()) {
-        return {true};
-    }
-    sql_query->prepare(
-        "SELECT id, ip, name, custom, pass FROM token WHERE ip = :customIp AND custom = 1 AND isdel = 0");
-    sql_query->bindValue(":customIp", customIp);
-    if (sql_query->exec() && sql_query->next()) {
+Token TokenDBUtil::queryCustomIp(const QString &customIp) {
+    std::lock_guard<std::mutex> lock(dbMutex);
+    QSqlDatabase db = getThreadLocalDb();
+    QSqlQuery query(db);
+    query.prepare("SELECT id, ip, custom FROM token WHERE ip = :customIp AND custom = 1 AND isdel = 0");
+    query.bindValue(":customIp", customIp);
+    if (query.exec() && query.next()) {
         Token token;
-        token.setToken(sql_query->value(0).toString());
-        token.setIp(sql_query->value(1).toString());
-        token.setName(sql_query->value(2).toString());
-        token.setCustom(sql_query->value(3).toInt() == 1);
-        token.setPass(sql_query->value(4).toInt());
+        token.setToken(query.value(0).toString());
+        token.setIp(query.value(1).toString());
+        token.setCustom(query.value(2).toInt() == 1);
         return token;
     }
+
     return {true};
 }
 
-QList<Token> TokenDBUtil::queryList() const {
-    if (!database.isOpen()) {
-        return {};
-    }
+QList<Token> TokenDBUtil::queryList() {
+    std::lock_guard<std::mutex> lock(dbMutex);
     QList<Token> list;
-    sql_query->exec("SELECT id, ip, custom, pass FROM token WHERE isdel = 0");
-    while (sql_query->next()) {
+    QSqlDatabase db = getThreadLocalDb();
+    QSqlQuery query(db);
+    query.exec("SELECT id, ip, custom FROM token WHERE isdel = 0");
+    while (query.next()) {
         Token token;
-        token.setToken(sql_query->value(0).toString());
-        token.setIp(sql_query->value(1).toString());
-        token.setName(sql_query->value(2).toString());
-        token.setCustom(sql_query->value(3).toInt() == 1);
-        token.setPass(sql_query->value(4).toInt());
+        token.setToken(query.value(0).toString());
+        token.setIp(query.value(1).toString());
+        token.setCustom(query.value(2).toInt() == 1);
         list.append(token);
     }
 
     return list;
 }
 
-void TokenDBUtil::deleteToken(const QString &id) const {
-    if (!database.isOpen()) {
-        return;
-    }
+void TokenDBUtil::deleteToken(const QString &id) {
+    std::lock_guard<std::mutex> lock(dbMutex);
     sql_query->prepare("DELETE FROM token WHERE id = :id");
     sql_query->bindValue(":id", id);
     if (!sql_query->exec()) {
@@ -135,12 +112,9 @@ void TokenDBUtil::deleteToken(const QString &id) const {
     }
 }
 
-void TokenDBUtil::createTable() const {
-    if (!database.isOpen()) {
-        return;
-    }
+void TokenDBUtil::createTable() {
     if (!sql_query->exec(
-        "CREATE TABLE IF NOT EXISTS token (id VARCHAR(32) PRIMARY KEY, ip VARCHAR(16), name VARCHAR(16), custom INTEGER, pass INTEGER, isdel INTEGER)")) {
+            "CREATE TABLE IF NOT EXISTS token (id VARCHAR(32) PRIMARY KEY, ip VARCHAR(16), custom INTEGER, isdel INTEGER)")) {
         qCritical() << "Failed to create table:" << sql_query->lastError().text();
     }
 }

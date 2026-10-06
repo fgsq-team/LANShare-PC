@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QUuid>
 #include <QApplication>
+#include <QClipboard>
 #include "DataDec.h"
 #include "DataEnc.h"
 #include "UDPClient.h"
@@ -15,35 +16,39 @@
 #include "TimeTools.h"
 #include "CodeUtils.h"
 #include "Utils.h"
+#include "LLog.h"
 #include "LException.h"
 #include "ByteUtils.h"
 
 #include "LHttpServer.h"
 #include "ByteArrayIOUtils.h"
 #include "StringLockManager.h"
+#include <QStandardPaths>
+#include <shared_mutex>
 #include <utility>
 #include <vector>
 
 #include "BatteryUtils.h"
-#include "MediaIdPathDBUtil.h"
 
 LANShare *instance = nullptr;
 
 #define BUFF_SIZE (1024 * 1024 * 2)
 
-void LANShare::addDevice(const Device &device) {
+void addDevice(const Device &device) {
     std::mutex &lock = StringLockManager::getStringLock("mMapMutex");
     lock.lock();
-    onLineDevices[device.getDevIp().toStdString() + ":" +
-                  std::to_string(device.getDevPort())] = device;
+    LANShare *lanshare = LANShare::getInstance();
+    lanshare->onLineDevices[device.getDevIp().toStdString() + ":" +
+                            std::to_string(device.getDevPort())] = device;
     lock.unlock();
     LHttpServer::sendDeviceList();
 }
 
-void LANShare::removeDevice(const Device &device) {
+void removeDevice(const Device &device) {
     std::mutex &lock = StringLockManager::getStringLock("mMapMutex");
     lock.lock();
-    onLineDevices.erase(
+    LANShare *lanshare = LANShare::getInstance();
+    lanshare->onLineDevices.erase(
         device.getDevIp().toStdString() + ":" + std::to_string(device.getDevPort()));
     lock.unlock();
     LHttpServer::sendDeviceList();
@@ -54,10 +59,11 @@ LANShare::LANShare(LANShareWindow *mainWindow) : mainWindow(mainWindow) {
     instance = this;
     updateMDevices();
     mainWindow->updateWebServiceIp();
-    udpServer = std::make_unique<UDPServer>(config.udpPort);
-    tcpServer = std::make_unique<TCPServer>(config.tcpPort);
+    udpServer = std::make_unique<UDPServer>(Config::instance().udpPort);
+    tcpServer = std::make_unique<TCPServer>(Config::instance().tcpPort);
     tcpServer->bind();
     lhttpServer = std::make_unique<LHttpServer>(this);
+    tcpThreadPool = std::make_unique<ThreadPool>(20);
     // 通知设备我已上线
     for (const auto &device: getMDevices()) {
         noticeDeviceOnLineByIp(device.getDevBrotIp());
@@ -73,24 +79,6 @@ void LANShare::updateMDevices() {
     lock.lock();
     mDevices = NetWorldUtils::getDevices();
     lock.unlock();
-}
-
-void encData(mbyte *buffer, int len, int off, mlong index) {
-    int j = 0;
-    for (int i = off; i < len + off; i++) {
-        int v = (buffer[i] - 1) ^ (int) ((index + j) & 0xFF);
-        buffer[i] = (mbyte) v;
-        j++;
-    }
-}
-
-void decData(mbyte *buffer, int len, int off, mlong index) {
-    int j = 0;
-    for (int i = off; i < len + off; i++) {
-        int v = (buffer[i] ^ (int) ((index + j) & 0xFF)) + 1;
-        buffer[i] = (mbyte) v;
-        j++;
-    }
 }
 
 std::unique_ptr<TCPClient> makeSocket(QString ip, int port) {
@@ -109,13 +97,25 @@ std::unique_ptr<TCPClient> makeSocket(QString ip, int port) {
     return client;
 }
 
+
+void makeUdpDataEnc(const Device &device, DataEnc *dataEnc) {
+    dataEnc->putInt(device.getDevPort());
+    dataEnc->putString(device.getDevIp());
+    dataEnc->putString(device.getDevName());
+    dataEnc->putInt(device.getDevMode());
+    dataEnc->putString(Config::instance().uniqueUUid + "-" + QString::number(DATA_VERSION));
+    dataEnc->putInt(DATA_VERSION_3);
+    dataEnc->putInt(device.getBatteryLevel());
+    dataEnc->putByte(device.getChargeStatus());
+}
+
 void makeDataEnc(const Device &device, DataEnc *dataEnc) {
     dataEnc->putInt(device.getDevPort());
     dataEnc->putString(device.getDevIp());
     dataEnc->putString(device.getDevName());
     dataEnc->putInt(device.getDevMode());
-    dataEnc->putString(config.uniqueUUid);
-    dataEnc->putInt(DATA_VERSION);
+    dataEnc->putString(Config::instance().uniqueUUid);
+    dataEnc->putInt(DATA_VERSION_3);
     dataEnc->putInt(device.getBatteryLevel());
     dataEnc->putByte(device.getChargeStatus());
 }
@@ -240,7 +240,7 @@ mlong baseSendEnc(LFile *file, LFile *f, mlong size, mlong totalFileSize, DataEn
         while ((ten = ioUtils->read(dataEnc.getBuffer() + DataEnc::headerSize(), BUFF_SIZE - DataEnc::headerSize())) >
                0) {
             dataEnc.setDataIndex(ten);
-            encData(dataEnc.getBuffer(), ten, DataEnc::headerSize(), thatSend);
+            mUtils::encData(dataEnc.getBuffer(), ten, DataEnc::headerSize(), thatSend);
             MTCPClient *mtcpClient = file->mioUtil;
             if (mtcpClient->send(dataEnc.getData(), dataEnc.getDataLen()) != dataEnc.getDataLen()) {
                 thatSend = -3;
@@ -365,7 +365,7 @@ mlong baseRecvDec(const LFile *mfile,
                     qDebug("recvo error");
                     break;
                 }
-                decData(buffer, length, DataEnc::headerSize(), thatTotal);
+                mUtils::decData(buffer, length, DataEnc::headerSize(), thatTotal);
                 int rel = fileIO.write((char *) buffer, DataEnc::headerSize(), length);
                 totalRecv += rel;
                 thatTotal += rel;
@@ -422,38 +422,7 @@ QString avoidDuplication(const QFileInfo &outFile) {
     return outFile.filePath();
 }
 
-mlong findFile(std::list<LFile> &listFile, mlong size, const QString &path) {
-    QDir dir(path);
-    qDebug() << "扫描路径:" << path;
-    if (!dir.exists())
-        return false;
-    dir.setFilter(QDir::Dirs | QDir::Files);
-    //    dir.setSorting(QDir::DirsFirst);
-    QFileInfoList list = dir.entryInfoList();
-    int i = 0;
-    mlong fileSize = size;
-    do {
-        const QFileInfo &fileInfo = list.at(i);
-        if (fileInfo.fileName() == "." | fileInfo.fileName() == "..") {
-            i++;
-            continue;
-        }
-        if (fileInfo.isDir()) {
-            fileSize += findFile(listFile, 0, fileInfo.filePath());
-        } else {
-            LFile file;
-            file.setFileName(fileInfo.fileName());
-            file.setIsDirectory(false);
-            file.setFileSize(fileInfo.size());
-            file.setPath(fileInfo.filePath());
-            listFile.push_back(file);
-            fileSize += fileInfo.size();
-            qDebug() << "扫描到文件: " + fileInfo.filePath() << "大小:" << fileInfo.size();
-        }
-        i++;
-    } while (i < list.size());
-    return fileSize;
-}
+
 
 /**
  * 发送文件
@@ -463,18 +432,23 @@ void LANShare::sendFile(const Device &device, std::vector<LFile *> selectFiles, 
     if (client == nullptr) {
         return;
     }
+
     auto *buffer = new mbyte[BUFF_SIZE];
     std::vector<Device>::iterator p1;
-    std::vector<Device> mDevices = LANShare::getInstance()->getMDevices();
-    for (p1 = mDevices.begin(); p1 != mDevices.end(); p1++) {
+    std::vector<Device> mDevices = getInstance()->getMDevices();
+    for (p1 = mDevices.begin(); p1 != mDevices.end(); ++p1) {
         if (NetWorldUtils::subNet(NetWorldUtils::getMaskMapLength(p1->getDevNetMask()), p1->getDevIp(),
                                   device.getDevIp())) {
-            std::string userName = config.clientName.toStdString();
+            if (device.getDataVersion() >= DATA_VERSION_4) {
+                getInstance()->fileSend.send(*p1, device, std::move(client), selectFiles);
+                return;
+            }
+            std::string userName = Config::instance().clientName.toStdString();
             DataEnc dataEnc(buffer, BUFF_SIZE);
             makeDataEnc(*p1, &dataEnc);
             dataEnc.setCmd(FS_SHARE_FILE);
             dataEnc.setCount(count);
-            dataEnc.putBool(config.encData);
+            dataEnc.putBool(Config::instance().encData);
             qDebug() << "IP:" << device.getDevIp();
             try {
                 client->send(dataEnc.getData(), dataEnc.getDataLen());
@@ -487,8 +461,8 @@ void LANShare::sendFile(const Device &device, std::vector<LFile *> selectFiles, 
                 file->setMioUtil(new MTCPClient(client->getFd()));
                 file->setUuid(Utils::getUUID());
                 if (file->isDirectory()) {
-                    std::list<LFile> filelist;
-                    mlong fileSize = findFile(filelist, 0, file->getPath());
+                    std::vector<LFile> filelist;
+                    mlong fileSize = LFile::findFile(filelist, 0, file->getPath());
                     file->setFileSize(fileSize);
                     file->setFileList(filelist);
                 }
@@ -508,7 +482,7 @@ void LANShare::sendFile(const Device &device, std::vector<LFile *> selectFiles, 
                     file,
                     file->getUuid(),
                     file->fileName,
-                    device.getDevName() + " <- " + config.clientName,
+                    device.getDevName() + " <- " + Config::instance().clientName,
                     file->fileSize,
                     false,
                     !file->isDirectory(),
@@ -540,7 +514,7 @@ void LANShare::sendFile(const Device &device, std::vector<LFile *> selectFiles, 
                 mlong thatTotal = 0;
                 // 文件夹发送
                 if (file->isDirectory()) {
-                    std::list<LFile> fileLis = file->getFileList();
+                    std::vector<LFile> fileLis = file->getFileList();
                     QFileInfo fileInfo(file->getPath());
                     QString p = fileInfo.path();
                     p = p.remove(p.size(), 1);
@@ -553,7 +527,7 @@ void LANShare::sendFile(const Device &device, std::vector<LFile *> selectFiles, 
                         dataEnc.putString(path);
                         file->mioUtil->send(dataEnc.getData(), dataEnc.getDataLen());
                         f.setUuid(file->getUuid());
-                        if (config.encData) {
+                        if (Config::instance().encData) {
                             thatTotal = baseSendEnc(file, &f, total, file->getFileSize(), dataEnc);
                         } else {
                             thatTotal = baseSend(file, &f, total, file->getFileSize(), dataEnc);
@@ -568,7 +542,7 @@ void LANShare::sendFile(const Device &device, std::vector<LFile *> selectFiles, 
                     }
                 } else {
                     // 文件发送
-                    if (config.encData) {
+                    if (Config::instance().encData) {
                         total += baseSendEnc(file, file, total, file->getFileSize(), dataEnc);
                     } else {
                         total += baseSend(file, file, total, file->getFileSize(), dataEnc);
@@ -581,7 +555,7 @@ void LANShare::sendFile(const Device &device, std::vector<LFile *> selectFiles, 
                 } else {
                     emit
                     LANShareWindow::getInstance()->sigRecviceFileSuccess(file->getUuid(), true, file->getPath());
-                    LANShare::getInstance()->lhttpServer->sendWebSocketMessage(
+                    getInstance()->lhttpServer->sendWebSocketMessage(
                         file->getFileName(),
                         device.getDevName(),
                         file->getPath(),
@@ -605,6 +579,13 @@ void LANShare::sendFile(const Device &device, std::vector<LFile *> selectFiles, 
         }
     }
     delete[] buffer;
+}
+
+void LANShare::startNewVersionHandleRecvFile(
+    Device fromDevice, FileTransfer *fileTransfer, std::vector<LFile *> files, CustomDataStream *stream,
+    boolean encData, boolean isAgree
+) {
+    getInstance()->fileServer.startReceiveFile(fileTransfer, std::move(files), stream, encData, isAgree);
 }
 
 void LANShare::startHandleRecvFile(
@@ -636,7 +617,7 @@ void LANShare::startHandleRecvFile(
                     char *c = dataDec.getStr();
                     QString fileName = c;
                     delete[] c;
-                    QString saveFilePath = QDir::cleanPath(config.saveFilePath);
+                    QString saveFilePath = QDir::cleanPath(Config::instance().saveFilePath);
                     QString newPath = saveFilePath + SEPARATORS + fileName;
                     const int index = static_cast<int>(newPath.lastIndexOf("/"));
                     QString folder = newPath.mid(0, index);
@@ -653,7 +634,8 @@ void LANShare::startHandleRecvFile(
                     }
                     if (rel == -3) {
                         break;
-                    } else if (rel <= 0) {
+                    }
+                    if (rel <= 0) {
                         continue;
                     }
                     total += rel;
@@ -664,14 +646,14 @@ void LANShare::startHandleRecvFile(
                     emit
                     LANShareWindow::getInstance()->sigRecviceFileSuccess(
                         item->getUuid(), false,
-                        config.saveFilePath + item->getFileName()
+                        Config::instance().saveFilePath + item->getFileName()
                     );
                 } else {
                     qDebug("recv sucess");
                     emit
                     LANShareWindow::getInstance()->sigRecviceFileSuccess(
                         item->getUuid(), true,
-                        config.saveFilePath + item->getFileName());
+                        Config::instance().saveFilePath + item->getFileName());
                     LHttpServer::sendWebSocketMessage(
                         item->getFileName(),
                         device.getDevName(),
@@ -685,7 +667,7 @@ void LANShare::startHandleRecvFile(
                     );
                 }
             } else {
-                QString saveFilePath = QDir::cleanPath(config.saveFilePath);
+                QString saveFilePath = QDir::cleanPath(Config::instance().saveFilePath);
                 mUtils::createMultipleFolders(saveFilePath);
                 qDebug() << "saveFilePath:" << saveFilePath;
                 QString newPath = saveFilePath + SEPARATORS + item->fileName;
@@ -763,153 +745,157 @@ void LANShare::handleTcp(std::unique_ptr<TCPClient> tcpClient) {
         QString str(buff);
         str = str.toUpper();
         //        qDebug() << "str:" << buff;
-        if (config.webService && (str.startsWith("GET") || str.startsWith("POST"))) {
+        if (Config::instance().webService && (str.startsWith("GET") || str.startsWith("POST"))) {
             getInstance()->lhttpServer->httpServer->newClient(tcpClient.get(), str);
-        } else {
-            tcpClient->close();
         }
+        tcpClient->close();
         delete[] buffer;
         return;
     }
-    if (tcpClient->recvo(buffer, DataEnc::headerSize()) != DataEnc::headerSize()) return;
-    DataDec dataDec(buffer, BUFF_SIZE);
-    int length = dataDec.getLength();
-    if (tcpClient->recvo(buffer, DataEnc::headerSize(), length, 0) != length) return;
-    dataDec.setData(buffer, DataEnc::headerSize() + length);
-    // 设备端口
-    const int devPort = dataDec.getInt();
-    // 设备ip
-    char *devIp = dataDec.getStr();
-    // 设备名
-    char *devName = dataDec.getStr();
-    // 设备类型
-    const int devMode = dataDec.getInt();
-    // 设备唯一码
-    const char *uniqueUUid = dataDec.getStr();
-    // 协议版本
-    const int dataVersion = dataDec.getInt();
-    // 电量
-    const int batteryLevel = dataDec.getInt();
-    // 充电状态
-    const mbyte chargeStatus = dataDec.getByte();
-    int webDeviceCount = dataDec.getInt();
-    Device device;
-    device.setDevMode(devMode);
-    device.setDevName(devName);
-    device.setDevIp(devIp);
-    device.setDevNetMask("");
-    device.setDevPort(devPort);
-    device.setSetTime(TimeTools::getCurrentTime());
-    device.setDataVersion(dataVersion);
-    device.setUniqueUUid(uniqueUUid);
-    device.setBatteryLevel(batteryLevel);
-    device.setChargeStatus(chargeStatus);
-    getInstance()->addDevice(device);
-    if (webDeviceCount > 0) {
-        for (int i = 0; i < webDeviceCount; i++) {
-            int webDevicePort = dataDec.getInt();
-            QString webDeviceIp = dataDec.getString().c_str();
-            QString webDeviceName = dataDec.getString().c_str();
-            QString address = webDeviceIp + ":" + QString::number(webDevicePort);
-            Device debDevice = getInstance()->onLineDevices[address.toStdString()];
-            debDevice.setDevPort(webDevicePort);
-            debDevice.setDevIp(webDeviceIp);
-            debDevice.setDevName(webDeviceName);
-            debDevice.setUniqueUUid(webDeviceIp + QString::number(webDevicePort) + webDeviceName);
-            debDevice.setDevMode(Device::L_WEB);
-            debDevice.setSetTime(TimeTools::getCurrentTime());
-            getInstance()->addDevice(debDevice);
+    CustomDataStream dataStream(tcpClient.get());
+    int cmd = dataStream.readInt();
+    if (cmd == NEW_VERSION_4) {
+        Device device;
+        auto deviceString = dataStream.readString();
+        QJsonDocument doc = QJsonDocument::fromJson(deviceString.c_str());
+        QJsonObject data = doc.object();
+        device.setDevIp(data["devIP"].toString());
+        device.setDevName(data["devName"].toString());
+        device.setDevMode(data["devMode"].toInt());
+        device.setDevPort(data["devPort"].toInt());
+        device.setUniqueUUid(data["uniqueUUid"].toString());
+        device.setDataVersion(data["dataVersion"].toInt());
+        device.setBatteryLevel(data["batteryLevel"].toInt());
+        device.setChargeStatus(data["chargeStatus"].toInt());
+        if (device.getDataVersion() < DATA_VERSION_4) {
+            device.setDataVersion(DATA_VERSION_4);
         }
-    }
-    const int cmd = dataDec.getCmd();
-    if (cmd == FS_SHARE_FILE) {
-        const int count = dataDec.getCount();
-        const boolean needEncData = dataDec.getBool();
-        qDebug("file count:%d", count);
-        qDebug("ip:%s:%d name:%s", devIp, devPort, devName);
-        std::vector<LFile *> files;
-        for (int i = 0; i < count; i++) {
-            if (tcpClient->recvo(buffer, 0, DataEnc::headerSize(), 0) != DataEnc::headerSize()) return;
-            length = dataDec.getLength();
-            if (tcpClient->recvo(buffer, DataEnc::headerSize(), length, 0) != length) return;
-            dataDec.setData(buffer, DataEnc::headerSize() + length);
-            const mlong fileSize = dataDec.getLong();
-            // 文件名称
-            char *strFilename = dataDec.getStr();
-            const int fileType = dataDec.getInt();
-            const char *videoTime = dataDec.getStr();
-            qDebug("fileType:%d fileName:%s  fileSize:%lld", fileType, strFilename, fileSize);
-            auto *lfile = new LFile();
-            lfile->setFileName(strFilename);
-            lfile->setFileSize(fileSize);
-            if (fileType == FILE_FOLDER) {
-                const int fileCount = dataDec.getInt();
-                lfile->setSubFileCount(fileCount);
-                lfile->setIsDirectory(true);
-            } else if (fileType == FILE_IMAGE || fileType == FILE_VIEDO) {
-                const mlong mediaId = dataDec.getLongDefualt(-1);
-                lfile->setMediaId(mediaId);
-                lfile->setIsDirectory(false);
+        getInstance()->fileServer.handleVersion1(device, std::move(tcpClient));
+    } else {
+        if (tcpClient->recvo(buffer + 4, DataEnc::headerSize() - 4) != DataEnc::headerSize() - 4) return;
+        DataDec dataDec(buffer, BUFF_SIZE);
+        int length = dataDec.getLength();
+        if (tcpClient->recvo(buffer, DataEnc::headerSize(), length, 0) != length) return;
+        dataDec.setData(buffer, DataEnc::headerSize() + length);
+        // 设备端口
+        const int devPort = dataDec.getInt();
+        // 设备ip
+        char *devIp = dataDec.getStr();
+        // 设备名
+        char *devName = dataDec.getStr();
+        // 设备类型
+        const int devMode = dataDec.getInt();
+        // 设备唯一码
+        const char *uniqueUUid = dataDec.getStr();
+        // 协议版本
+        const int dataVersion = dataDec.getInt();
+        // 电量
+        const int batteryLevel = dataDec.getInt();
+        // 充电状态
+        const mbyte chargeStatus = dataDec.getByte();
+        Device device;
+        device.setDevMode(devMode);
+        device.setDevName(devName);
+        device.setDevIp(devIp);
+        device.setDevNetMask("");
+        device.setDevPort(devPort);
+        device.setSetTime(TimeTools::getCurrentTime());
+        device.setDataVersion(dataVersion);
+        device.setUniqueUUid(uniqueUUid);
+        device.setBatteryLevel(batteryLevel);
+        device.setChargeStatus(chargeStatus);
+        addDevice(device);
+        DataEnc dataEnc(buffer,BUFF_SIZE);
+        dataEnc.setCmd(cmd);
+        if (cmd == FS_SHARE_FILE) {
+            const int count = dataDec.getCount();
+            const boolean needEncData = dataDec.getBool();
+            qDebug("file count:%d", count);
+            qDebug("ip:%s:%d name:%s", devIp, devPort, devName);
+            std::vector<LFile *> files;
+            for (int i = 0; i < count; i++) {
+                if (tcpClient->recvo(buffer, 0, DataEnc::headerSize(), 0) != DataEnc::headerSize()) return;
+                length = dataDec.getLength();
+                if (tcpClient->recvo(buffer, DataEnc::headerSize(), length, 0) != length) return;
+                dataDec.setData(buffer, DataEnc::headerSize() + length);
+                const mlong fileSize = dataDec.getLong();
+                // 文件名称
+                char *strFilename = dataDec.getStr();
+                const int fileType = dataDec.getInt();
+                const char *videoTime = dataDec.getStr();
+                qDebug("fileType:%d fileName:%s  fileSize:%lld", fileType, strFilename, fileSize);
+                auto *lfile = new LFile();
+                lfile->setFileName(strFilename);
+                lfile->setFileSize(fileSize);
+                if (fileType == FILE_FOLDER) {
+                    const int fileCount = dataDec.getInt();
+                    lfile->setSubFileCount(fileCount);
+                    lfile->setIsDirectory(true);
+                } else if (fileType == FILE_IMAGE || fileType == FILE_VIEDO) {
+                    const mlong mediaId = dataDec.getLongDefualt(-1);
+                    lfile->setMediaId(mediaId);
+                    lfile->setIsDirectory(false);
+                } else {
+                    lfile->setIsDirectory(false);
+                }
+                lfile->setMioUtil(new MTCPClient(tcpClient->getFd()));
+                lfile->setUuid(Utils::getUUID());
+                files.push_back(lfile);
+                emit
+                LANShareWindow::getInstance()->sigRecviceFile(
+                    lfile,
+                    lfile->getUuid(),
+                    strFilename,
+                    devName,
+                    fileSize,
+                    true,
+                    !lfile->isDirectory(),
+                    false
+                );
+                delete videoTime;
+                delete strFilename;
+            }
+            if (Config::instance().acceptRecvFiles) {
+                startHandleRecvFile(true, device, needEncData, files, tcpClient);
             } else {
-                lfile->setIsDirectory(false);
+                auto *acceptFiles = new AcceptFiles();
+                acceptFiles->device = device;
+                acceptFiles->files = files;
+                acceptFiles->tcpClient = std::move(tcpClient);
+                emit
+                LANShareWindow::getInstance()->sigRequstRecvFiles(acceptFiles);
             }
-            lfile->setMioUtil(new MTCPClient(tcpClient->getFd()));
-            lfile->setUuid(Utils::getUUID());
-            files.push_back(lfile);
+        } else if (cmd == FS_MESSAGE) {
+            const char *message = dataDec.getStr();
+            const QString decode = mUtils::decMessage(message, Config::instance().messageKey);
+            qDebug() << "devName:" << devName << " message:" << decode;
             emit
-            LANShareWindow::getInstance()->sigRecviceFile(
-                lfile,
-                lfile->getUuid(),
-                strFilename,
-                devName,
-                fileSize,
-                true,
-                !lfile->isDirectory(),
-                false
-            );
-            delete videoTime;
-            delete strFilename;
-        }
-        if (config.acceptRecvFiles) {
-            startHandleRecvFile(true, device, needEncData, files, tcpClient);
-        } else {
-            auto *acceptFiles = new AcceptFiles();
-            acceptFiles->device = device;
-            acceptFiles->files = files;
-            acceptFiles->tcpClient = std::move(tcpClient);
-            emit
-            LANShareWindow::getInstance()->sigRequstRecvFiles(acceptFiles);
-        }
-    } else if (cmd == FS_MESSAGE) {
-        const char *message = dataDec.getStr();
-        const QString decode = mUtils::decMessage(message, config.messageKey);
-        qDebug() << "devName:" << devName << " message:" << decode;
-        emit
-        LANShareWindow::getInstance()->sigNewMessage(device, decode, true);
-        delete[] message;
-        qDebug("client close");
-        tcpClient->close();
-    } else if (cmd == FS_GET_NO_SYNC_MEDIA) {
-        const int count = dataDec.getCount();
-        DataEnc dataEnc(buffer, BUFF_SIZE);
-        int syncCount = 0;
-        for (int i = 0; i < count; i++) {
-            const mlong mediaId = dataDec.getLong();
-            MediaIdPathDBUtil mediaIdPathDbUtil;
-            if (!mediaIdPathDbUtil.isIdExists(mediaId)) {
-                syncCount++;
-                dataEnc.putLong(mediaId);
+            LANShareWindow::getInstance()->sigNewMessage(device, decode, true);
+            delete[] message;
+            qDebug("client close");
+            tcpClient->close();
+        } else if (cmd == FS_GET_NO_SYNC_MEDIA) {
+            const int count = dataDec.getCount();
+            DataEnc dataEnc(buffer, BUFF_SIZE);
+            int syncCount = 0;
+            for (int i = 0; i < count; i++) {
+                const mlong mediaId = dataDec.getLong();
+                MediaIdPathDBUtil mediaIdPathDbUtil;
+                if (!mediaIdPathDbUtil.isIdExists(mediaId)) {
+                    syncCount++;
+                    dataEnc.putLong(mediaId);
+                }
             }
+            dataEnc.setCount(syncCount);
+            tcpClient->send(dataEnc.getData(), dataEnc.getDataLen());
+            qDebug("client close");
+            tcpClient->close();
         }
-        dataEnc.setCount(syncCount);
-        tcpClient->send(dataEnc.getData(), dataEnc.getDataLen());
-        qDebug("client close");
-        tcpClient->close();
+        delete[] devIp;
+        delete[] devName;
+        delete[] uniqueUUid;
     }
     delete[] buffer;
-    delete[] devIp;
-    delete[] devName;
-    delete[] uniqueUUid;
 }
 
 /**
@@ -924,12 +910,12 @@ void LANShare::scannDevice() {
         std::vector<Device>::iterator p1;
         for (p1 = devices.begin(); p1 != devices.end(); p1++) {
             DataEnc dataEnc(buffer, 2048);
-            makeDataEnc(*p1, &dataEnc);
+            makeUdpDataEnc(*p1, &dataEnc);
             dataEnc.setCmd(UDP_GET_DEVICES);
             UDPClient udpClient(p1->getDevIp());
             //            qDebug() << "广播ip: " << p1->getDevBrotIp();
-            //            udpClient.sendto(p1->getDevBrotIp(), config.udpPort, dataEnc.getData(), dataEnc.getDataLen());
-            udpSend(&udpClient, &dataEnc, p1->getDevBrotIp(), config.udpPort);
+            //            udpClient.sendto(p1->getDevBrotIp(), Config::instance().udpPort, dataEnc.getData(), dataEnc.getDataLen());
+            udpSend(&udpClient, &dataEnc, p1->getDevBrotIp(), Config::instance().udpPort);
             udpClient.close();
             std::mutex &lock = StringLockManager::getStringLock("mMapMutex");
             lock.lock();
@@ -938,7 +924,7 @@ void LANShare::scannDevice() {
                 mlong devTime = iter->second.getSetTime();
                 mlong currentTime = TimeTools::getCurrentTime();
                 mlong timeOut = currentTime - devTime;
-                if (iter->second.getCanRemove() && timeOut > (1000 * 20)) {
+                if (timeOut > (1000 * 20)) {
                     //LLog::Debug("timeOut:%d ip:%s", timeOut, iter->second.getDevIp().c_str());
                     lanShare->onLineDevices.erase(iter++);
                 } else {
@@ -960,10 +946,10 @@ void LANShare::noticeDeviceOnLineByIp(const QString &ip) const {
         if (NetWorldUtils::subNet(NetWorldUtils::getMaskMapLength(p1->getDevNetMask()), p1->getDevIp(), ip)) {
             auto *bytes = new mbyte[2048];
             DataEnc dataEnc(bytes, 2048);
-            makeDataEnc(*p1, &dataEnc);
+            makeUdpDataEnc(*p1, &dataEnc);
             dataEnc.setCmd(UDP_SET_DEVICES);
             UDPClient udpClient(p1->getDevIp());
-            udpSend(&udpClient, &dataEnc, ip, config.udpPort);
+            udpSend(&udpClient, &dataEnc, ip, Config::instance().udpPort);
             delete[] bytes;
             break;
         }
@@ -977,10 +963,10 @@ void LANShare::noticeDeviceOffLineByIp(const QString &ip) const {
         if (NetWorldUtils::subNet(NetWorldUtils::getMaskMapLength(p1->getDevNetMask()), p1->getDevIp(), ip)) {
             auto *bytes = new mbyte[2048];
             DataEnc dataEnc(bytes, 2048);
-            makeDataEnc(*p1, &dataEnc);
+            makeUdpDataEnc(*p1, &dataEnc);
             dataEnc.setCmd(UDP_DEVICE_OFF_LINE);
             UDPClient udpClient(p1->getDevIp());
-            udpSend(&udpClient, &dataEnc, ip, config.udpPort);
+            udpSend(&udpClient, &dataEnc, ip, Config::instance().udpPort);
             delete[] bytes;
             break;
         }
@@ -1024,7 +1010,12 @@ flag:
         int dataVersion = dataDec.getInt();
         int batteryLevel = dataDec.getInt();
         mbyte chargeStatus = dataDec.getByte();
-        int webDeviceCount = dataDec.getInt();
+        QString uniqueUUidStr = uniqueUUid;
+        if (uniqueUUidStr.contains("-")) {
+            auto split = uniqueUUidStr.split("-");
+            dataVersion = split[1].toInt();
+            uniqueUUidStr = split[0].toUtf8().data();
+        }
         //        qDebug() << "devIp：" << devIp;
         // 判断是否为自己发送的指令
         std::vector<Device> devices = lanShare->getMDevices();
@@ -1040,26 +1031,10 @@ flag:
         device.setDevPort(devPort);
         device.setSetTime(TimeTools::getCurrentTime());
         device.setDataVersion(dataVersion);
-        device.setUniqueUUid(uniqueUUid);
+        device.setUniqueUUid(uniqueUUidStr);
         device.setBatteryLevel(batteryLevel);
         device.setChargeStatus(chargeStatus);
-        getInstance()->addDevice(device);
-        if (webDeviceCount > 0) {
-            for (int i = 0; i < webDeviceCount; i++) {
-                int webDevicePort = dataDec.getInt();
-                QString webDeviceIp = dataDec.getString().c_str();
-                QString webDeviceName = dataDec.getString().c_str();
-                QString address = webDeviceIp + ":" + QString::number(webDevicePort);
-                Device debDevice = getInstance()->onLineDevices[address.toStdString()];
-                debDevice.setDevPort(webDevicePort);
-                debDevice.setDevIp(webDeviceIp);
-                debDevice.setDevName(webDeviceName);
-                debDevice.setUniqueUUid(webDeviceIp + QString::number(webDevicePort) + webDeviceName);
-                debDevice.setDevMode(Device::L_WEB);
-                debDevice.setSetTime(TimeTools::getCurrentTime());
-                getInstance()->addDevice(debDevice);
-            }
-        }
+        addDevice(device);
         int cmd = dataDec.getCmd();
         //       qDebug("cmd: %d", cmd);
         if (cmd == UDP_SET_DEVICES) {
@@ -1070,11 +1045,11 @@ flag:
             lanShare->noticeDeviceOnLineByIp(devIp);
         } else if (cmd == UDP_DEVICE_OFF_LINE) {
             //设备下线
-            getInstance()->removeDevice(device);
+            removeDevice(device);
         } else if (cmd == UDP_MESSAGE) {
             // 消息
             char *message = dataDec.getStr();
-            QString decode = mUtils::decMessage(message, config.messageKey);
+            QString decode = mUtils::decMessage(message, Config::instance().messageKey);
             qDebug() << "devName:" << devName << " message:" << decode;
             emit
             LANShareWindow::getInstance()->sigNewMessage(device, decode, true);
@@ -1083,7 +1058,7 @@ flag:
         } else if (cmd == UDP_MESSAGE_TO_CLIPBOARD) {
             // 消息写入剪切板
             char *message = dataDec.getStr();
-            QString decode = mUtils::decMessage(message, config.messageKey);
+            QString decode = mUtils::decMessage(message, Config::instance().messageKey);
             qDebug() << "devName:" << devName << " clip message:" << decode;
             emit
             LANShareWindow::getInstance()->sigNewMessage(device, decode, true);
@@ -1092,7 +1067,7 @@ flag:
             delete[] message;
         } else if (cmd == UDP_SEND_MEDIA_MUTE) {
             // 暂停
-            if (!config.receivceMute) {
+            if (!Config::instance().receivceMute) {
                 continue;
             }
             qDebug("静音");
@@ -1116,7 +1091,7 @@ flag:
             lanShare->muted = true;
 #endif
         } else if (cmd == UDP_SEND_MEDIA_RESTORE) {
-            if (!config.receivceMute) {
+            if (!Config::instance().receivceMute) {
                 continue;
             }
             qDebug("恢复音量");
@@ -1145,7 +1120,7 @@ void LANShare::createTcpServer() {
         if (tcpClient == nullptr) {
             return;
         }
-        std::thread(handleTcp, std::move(tcpClient)).detach();
+        lanShare->tcpThreadPool->enqueue(handleTcp, std::move(tcpClient));
     }
 }
 
@@ -1166,9 +1141,9 @@ void LANShare::broadcastMessage(Device *toDevice, const QString &message, bool i
         return;
     }
     if (shareWS) {
-        lhttpServer->sendWebSocketMessage(message, config.clientName, "", 0, 1, "", false, false);
+        lhttpServer->sendWebSocketMessage(message, Config::instance().clientName, "", 0, 1, "", false, false);
     }
-    QByteArray encMessage = mUtils::encMessage(message, config.messageKey);
+    QByteArray encMessage = mUtils::encMessage(message, Config::instance().messageKey);
     int buffLen = 1024 + encMessage.size();
     auto *buffer = new mbyte[buffLen];
     if (strlen > 700) {
@@ -1183,7 +1158,7 @@ void LANShare::broadcastMessage(Device *toDevice, const QString &message, bool i
                     if (NetWorldUtils::subNet(NetWorldUtils::getMaskMapLength(p1->getDevNetMask()), p1->getDevIp(),
                                               iter->second.getDevIp())) {
                         DataEnc dataEnc(buffer, buffLen);
-                        makeDataEnc(*p1, &dataEnc);
+                        makeUdpDataEnc(*p1, &dataEnc);
                         dataEnc.setCmd(FS_MESSAGE);
                         dataEnc.putString(encMessage);
                         std::unique_ptr<TCPClient> socket = makeSocket(iter->second.getDevIp(),
@@ -1203,7 +1178,7 @@ void LANShare::broadcastMessage(Device *toDevice, const QString &message, bool i
                                           toDevice->getDevIp())) {
                     DataEnc dataEnc(buffer, buffLen);
                     dataEnc.setCmd(FS_MESSAGE);
-                    makeDataEnc(*p1, &dataEnc);
+                    makeUdpDataEnc(*p1, &dataEnc);
                     dataEnc.putString(encMessage);
                     std::unique_ptr<TCPClient> socket = makeSocket(toDevice->getDevIp(), toDevice->getDevPort());
                     if (socket == nullptr) {
@@ -1227,10 +1202,10 @@ void LANShare::broadcastMessage(Device *toDevice, const QString &message, bool i
                 if (NetWorldUtils::subNet(NetWorldUtils::getMaskMapLength(p1->getDevNetMask()), p1->getDevIp(),
                                           iter->second.getDevIp())) {
                     DataEnc dataEnc(buffer, buffLen);
-                    makeDataEnc(*p1, &dataEnc);
+                    makeUdpDataEnc(*p1, &dataEnc);
                     dataEnc.setCmd(isClip ? UDP_MESSAGE_TO_CLIPBOARD : UDP_MESSAGE);
                     dataEnc.putString(encMessage);
-                    udpSend(udpServer.get(), &dataEnc, iter->second.getDevIp(), config.udpPort);
+                    udpSend(udpServer.get(), &dataEnc, iter->second.getDevIp(), Config::instance().udpPort);
                     break;
                 }
             }
@@ -1242,9 +1217,9 @@ void LANShare::broadcastMessage(Device *toDevice, const QString &message, bool i
                                       toDevice->getDevIp())) {
                 DataEnc dataEnc(buffer, buffLen);
                 dataEnc.setCmd(isClip ? UDP_MESSAGE_TO_CLIPBOARD : UDP_MESSAGE);
-                makeDataEnc(*p1, &dataEnc);
+                makeUdpDataEnc(*p1, &dataEnc);
                 dataEnc.putString(encMessage);
-                udpSend(udpServer.get(), &dataEnc, toDevice->getDevIp(), config.udpPort);
+                udpSend(udpServer.get(), &dataEnc, toDevice->getDevIp(), Config::instance().udpPort);
                 break;
             }
         }
@@ -1264,5 +1239,6 @@ void LANShare::close() {
     udpServer->close();
     tcpServer->close();
     isRun = false;
+    tcpThreadPool.reset();
     qDebug() << "LANShare Server is closed";
 }

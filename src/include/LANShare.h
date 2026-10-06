@@ -5,18 +5,28 @@
 #ifndef LANSHARE_LANSHARE_H
 #define LANSHARE_LANSHARE_H
 
-#include "Config.h"
+#include "Config.hpp"
 #include "UDPServer.h"
 #include "LHttpServer.h"
 #include "TCPServer.h"
 #include "TCPClient.h"
 #include "Device.h"
+#include "MTCPClient.h"
 #include "LANShareWindow.h"
+#include "DataDec.h"
 #include "LFile.h"
+#include "HttpServer.h"
+#include "MediaIdPathDBUtil.h"
 #include "TokenDBUtil.h"
+#include <list>
 #include <vector>
 #include <map>
 
+#include "FileSend.h"
+#include "../version/four/include/FileServer.h"
+#include "ThreadPool.h"
+
+class FileTransfer;
 class LANShareWindow;
 
 class AcceptFiles {
@@ -25,11 +35,12 @@ public:
     bool needEncData;
     std::vector<LFile *> files;
     std::unique_ptr<TCPClient> tcpClient;
+    FileTransfer *fileTransfer;
+    CustomDataStream *stream;
 };
 
 class LANShare {
 public:
-
     // 保存在线的设备
     std::map<std::string, Device> onLineDevices;
     // 自己设备信息
@@ -39,15 +50,13 @@ public:
     std::unique_ptr<TCPServer> tcpServer;
     LANShareWindow *mainWindow;
     std::unique_ptr<LHttpServer> lhttpServer;
-
+    std::unique_ptr<ThreadPool> tcpThreadPool;
+    FileServer fileServer;
+    FileSend fileSend;
     int systemVolume = 0;
     bool muted = false;
 
 public:
-    void addDevice(const Device &device);
-
-    void removeDevice(const Device &device);
-
     LANShare(LANShareWindow *mainWindow);
 
     ~LANShare();
@@ -57,7 +66,6 @@ public:
     const std::map<std::string, Device> &getOnLineDevices() const;
 
 public:
-
     std::vector<Device> getMDevices() const;
 
     static LANShare *getInstance();
@@ -72,8 +80,12 @@ public:
 
     static void sendFile(const Device &device, std::vector<LFile *> selectFiles, int count);
 
-    static void startHandleRecvFile(bool accept, const Device& device,
-                                    bool needEncData, const std::vector<LFile *>& files,
+   static void startNewVersionHandleRecvFile(Device fromDevice, FileTransfer *fileTransfer, std::vector<LFile *> files,
+                                       CustomDataStream *stream, boolean encData, boolean isAgree);
+
+
+    static void startHandleRecvFile(bool accept, const Device &device,
+                                    bool needEncData, const std::vector<LFile *> &files,
                                     const std::unique_ptr<TCPClient> &tcpClient);
 
     void broadcastMessage(Device *toDevice, const QString &message, bool isClip, bool shareWS);

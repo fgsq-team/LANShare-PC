@@ -15,6 +15,7 @@
 #include "TCPClient.h"
 #include "UploadResult.h"
 #include "UploadInputStream.h"
+#include "CaseInsensitiveMap.h"
 
 class Request : public QObject {
 Q_OBJECT
@@ -68,7 +69,7 @@ private:
     TCPClient *tcpClient;
     QString clientIP;
     qint64 contentLength;
-    QMap<QString, QString> headers;
+    CaseInsensitiveMap headers;
     QString requestURL;
     QString requestURLParams;
     QMap<QString, QString> pathParams;

@@ -9,6 +9,8 @@
 #include "qaesencryption.h"
 #include <QUuid>
 
+#define NEW_VERSION_4  -2 // 新版本
+#define NEW_FS_BREAK  -2 // 新版本
 
 // 局域网通讯命令
 #define UDP_GET_DEVICES  1001            // 获取设备
@@ -64,7 +66,7 @@
 #define DEFAULT_FILE_PATH  QDir::homePath()  + "/LANShare/"
 #endif
 
-#define DEFAULT_USER_NAME QDir::home().dirName()
+#define DEFAULT_USER_NAME QStandardPaths::writableLocation(QStandardPaths::HomeLocation)
 #define DEFAULT_MESSAGE_KEY "e4be1373272c69e0932651d97187b746c6725b17bbe84ad0b0fe2d4e81fc1d6c0c633d8ebd7f0fea65a57a9d5529d214"
 #define KEY "6c9b%8ErII@Rc&f"
 
@@ -120,9 +122,10 @@
 #define DATA_VERSION_1 1
 #define DATA_VERSION_2 2
 #define DATA_VERSION_3 3
-#define LANSHARE_VERSION 2500117
-#define LANSHARE_VERSION_NAME "1.1"
-#define DATA_VERSION DATA_VERSION_3
+#define DATA_VERSION_4 4
+#define LANSHARE_VERSION 2501212
+#define LANSHARE_VERSION_NAME "1.3"
+#define DATA_VERSION DATA_VERSION_4
 #define LANSHARE_SERVER "http://lanshares.com"
 //#define LANSHARE_SERVER "http://127.0.0.1:8881"
 #define CACHE_DIR "/.cache"
@@ -159,6 +162,7 @@
 #include <QStandardPaths>
 #include <memory>
 #include <QApplication>
+#include <cstdio>
 
 class Config {
 public:
@@ -185,20 +189,39 @@ public:
     bool openWebService = false;
     bool acceptRecvFiles = true;
     bool allowBackgroundRunning = false;
+    bool autoStart = false;
 
     std::unique_ptr<QSettings> settings;
     QString styleSheet;
     QString themeName;
-    QBrush chatBubblColorLeft = Qt::white;
-    QBrush chatBubblColorRight = Qt::white;
+    QString language = "zh_CN"; // 语言配置选项
+    QBrush chatBubblColorLeft;
+    QBrush chatBubblColorRight;
+    QColor selectionBgColor;
+    QColor selectionTextColor;
+    QColor primaryColor;
+    QColor textColor;
+    QColor successColor;
+    QColor errorColor;
 
-    ~Config() = default;
-
+private:
     Config() = default;
+
+public:
+    ~Config() {
+        settings = nullptr;
+    }
+
+    Config(const Config &) = delete;
+    Config &operator=(const Config &) = delete;
+
+    static Config &instance() {
+        static Config inst;
+        return inst;
+    }
 
     void init() {
         applicationDirPath = QCoreApplication::applicationDirPath();
-        qDebug() << "Config";
         // 获取当前用户目录路径
         QString userDir = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
         lanshareWorkDirPath = userDir + "/.LANShare";
@@ -226,19 +249,35 @@ public:
         openWebService = settings->value(OPEN_WEB_SERVICE, false).toBool();
         acceptRecvFiles = settings->value(ACCEPT_RECV_FILES, true).toBool();
         allowBackgroundRunning = settings->value(ALLOW_BACKGROUND_RUNNING, false).toBool();
+        autoStart = settings->value(AUTO_START, false).toBool();
         messageKey = settings->value(MESSAGE_KEY, DEFAULT_MESSAGE_KEY).toString();
         themeName = settings->value(THEME, "").toString();
+        language = settings->value("language", "zh_CN").toString();
         QAESEncryption encryption(QAESEncryption::AES_256, QAESEncryption::ECB, QAESEncryption::PKCS7);
         messageKey = QString(
                 QAESEncryption::RemovePadding(encryption.decode(QByteArray::fromHex(messageKey.toUtf8()), KEY),
                                               QAESEncryption::PKCS7));
         mUtils::createMultipleFolders(saveFilePath);
         mUtils::createMultipleFolders(saveFilePath + CACHE_DIR);
+        // 设置默认颜色（QApplication 已创建）
+        chatBubblColorLeft = Qt::white;
+        chatBubblColorRight = Qt::white;
+        selectionBgColor = QColor("#cceaff");
+        selectionTextColor = Qt::white;
+        primaryColor = QColor("#5B8DEF");
+        textColor = QColor("#1A1C1E");
+        successColor = QColor("#388E3C");
+        errorColor = QColor("#D32F2F");
         setTheme(themeName);
     }
 
     QSettings *getSettings() const {
         return settings.get();
+    }
+
+    void save() {
+        settings->setValue("language", language); // 保存语言设置
+        settings->sync();
     }
 
     void setTheme(const QString &name) {
@@ -251,25 +290,50 @@ public:
         if (file.open(QFile::ReadOnly)) {
             styleSheet = QTextStream(&file).readAll();
             chatBubblColorLeft = mUtils::parseColorFromStyleSheet(
-                    styleSheet,
-                    "ChatBubbleLeft",
-                    " background-color");
+                styleSheet,
+                "ChatBubbleLeft",
+                " background-color");
             chatBubblColorRight = mUtils::parseColorFromStyleSheet(
-                    styleSheet,
-                    "ChatBubbleRight",
-                    " background-color");
+                styleSheet,
+                "ChatBubbleRight",
+                " background-color");
+            selectionBgColor = mUtils::parseColorFromStyleSheet(
+                styleSheet,
+                "QLineEdit",
+                " selection-background-color");
+            selectionTextColor = mUtils::parseColorFromStyleSheet(
+                styleSheet,
+                "QLineEdit",
+                " selection-color");
+            primaryColor = mUtils::parseColorFromStyleSheet(
+                styleSheet,
+                "QPushButton",
+                " background-color");
+
+            // 根据主题显式设置文字颜色（不依赖正则解析）
+            if (newName == "dark") {
+                textColor = QColor("#E3E3E3");
+                successColor = QColor("#66BB6A");
+                errorColor = QColor("#EF5350");
+            } else if (newName == "emerald") {
+                textColor = QColor("#1A1C1E");
+                successColor = QColor("#FF8F00");
+                errorColor = QColor("#C62828");
+                chatBubblColorLeft = QBrush(QColor("#FFFFFF"));
+                chatBubblColorRight = QBrush(QColor("#2E7D32"));
+            } else {
+                textColor = QColor("#1A1C1E");
+                successColor = QColor("#388E3C");
+                errorColor = QColor("#D32F2F");
+            }
 
             qApp->setStyleSheet(styleSheet);
             file.close();
         } else {
             qDebug("Could not open qss file");
         }
-
     }
-
 };
 
-
-extern Config config;
 
 #endif //LANSHARE_WIN_CONFIG_H

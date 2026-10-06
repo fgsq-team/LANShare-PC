@@ -3,7 +3,7 @@
 //
 
 #include "TCPServer.h"
-#if defined(PLATFORM_WINDOWS)
+
 TCPServer::TCPServer(int port) : port(port) {
 }
 
@@ -12,13 +12,13 @@ TCPServer::~TCPServer() {
 }
 
 int TCPServer::bind() {
-
+#if defined(PLATFORM_WINDOWS)
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
         qDebug("Failed to load Winsock.\n");
         return -1;
     }
-
+#endif
     // Create IPv4 socket
     ipv4_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (ipv4_fd == -1) {
@@ -128,73 +128,12 @@ std::unique_ptr<TCPClient> TCPServer::accept() {
 }
 
 int TCPServer::close() const {
+#if defined(PLATFORM_WINDOWS)
     ::closesocket(ipv4_fd);
     ::closesocket(ipv6_fd);
+#elif defined(PLATFORM_ANDROID) || defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS)
+    ::close(ipv4_fd);
+    ::close(ipv6_fd);
+#endif
     return 0;
 }
-#else
-
-TCPServer::~TCPServer()
-{
-    this->close();
-}
-TCPServer::TCPServer(int port) : port(port) {
-
-#if defined(PLATFORM_WINDOWS)
-    // windows需要申请网络权限
-    WSADATA wsaData;
-    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        qDebug("Failed to load Winsock.\n");
-        return;
-    }
-#endif
-    ipv4_fd = socket(PF_INET, SOCK_STREAM, 0);
-    sockaddr_in servAddr{};
-    memset(&servAddr, 0, sizeof(servAddr));
-    servAddr.sin_family = AF_INET;
-    servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    servAddr.sin_port = htons(port);
-    if (::bind(ipv4_fd, (sockaddr *) &servAddr, sizeof(servAddr)) == -1) {
-        qDebug("bind error");
-        return;
-    }
-    if (::listen(ipv4_fd, 5) == -1) {
-        qDebug("listen error");
-        return;
-    }
-    qDebug("init TCPServer success");
-}
-
-int TCPServer::bind()
-{
-    return 1;
-}
-int TCPServer::acceptFd()  {
-    int newClient = (int) ::accept(ipv4_fd, nullptr, nullptr);
-    if (-1 == newClient) {
-        qDebug("accept error");
-        return -1;
-    } else {
-        //        qDebug("new client connect");
-    }
-    return newClient;
-}
-
-std::unique_ptr<TCPClient> TCPServer::accept()  {
-    int newClient = (int)::accept(ipv4_fd, nullptr, nullptr);
-    if (-1 == newClient) {
-        qDebug("accept error");
-        return nullptr;
-    } else {
-        // 创建新的TCPClient对象，并返回其智能指针
-        return std::make_unique<TCPClient>(newClient);
-    }
-}
-
-
-int TCPServer::close() const {
-    return ::close(ipv4_fd);
-}
-
-
-#endif

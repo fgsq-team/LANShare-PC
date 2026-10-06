@@ -15,7 +15,7 @@ DeviceSelecter::DeviceSelecter(std::function<void(Device)> callback, bool showAl
     setWindowFlags(Qt::Window | Qt::WindowCloseButtonHint);
     setFixedSize(270, 330);
     setWindowModality(Qt::ApplicationModal);
-    setWindowTitle("选择设备");
+    setWindowTitle(tr("选择设备"));
     ui->selecterListWidget->setSelectionMode(QAbstractItemView::SingleSelection);
     ui->selecterListWidget->setContextMenuPolicy(Qt::CustomContextMenu);
 
@@ -68,11 +68,11 @@ void DeviceSelecter::on_selecterListWidget_customContextMenuRequested(const QPoi
         clip->setText("http://" + device.getDevIp() + ":" + QString::number(device.getDevPort()));
         QWidget::close();
     } else if (action == copyAll) {
-        QString info = "设备名称: " + device.getDevName() + "\n";
-        info += "设备电量: " + QString::number(std::max(0, device.getBatteryLevel())) + "%\n";
-        info += "是否在充电: " + QString(device.getChargeStatus() == 1 ? "是" : "否") + "\n";
-        info += ("设备IP: " + device.getDevIp() + "\n");
-        info += ("网页地址: http://" + device.getDevIp() + ":" + QString::number(device.getDevPort()));
+        QString info = tr("设备名称: ") + device.getDevName() + "\n";
+        info += tr("设备电量: ") + QString::number(std::max(0, device.getBatteryLevel())) + "%\n";
+        info += tr("是否在充电: ") + QString(device.getChargeStatus() == 1 ? tr("是") : tr("否")) + "\n";
+        info += (tr("设备IP: ") + device.getDevIp() + "\n");
+        info += (tr("网页地址: http://") + device.getDevIp() + ":" + QString::number(device.getDevPort()));
         clip->setText(info);
         QWidget::close();
     }
@@ -94,7 +94,7 @@ void DeviceSelecter::slotUpdateListUI() {
         auto *item = new QListWidgetItem;
         auto *pDeviceItem = new DeviceItem(ui->selecterListWidget);
         Device device;
-        device.setDevName("所有设备");
+        device.setDevName(tr("所有设备"));
         device.setDevIp("");
         device.setDevMode(Device::L_UNKNOW);
         pDeviceItem->setDevice(device);

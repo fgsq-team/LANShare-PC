@@ -2,8 +2,8 @@
     <qresource prefix="/">
         <file>img/ic_phone.png</file>
         <file>img/ic_win.png</file>
-        <file>img/rc_dir_blue_icon.png</file>
-        <file>img/rc_file_icon_file.png</file>
+        <file>img/svgs/rc_dir_blue_icon.svg</file>
+        <file>img/svgs/rc_file_icon_file.svg</file>
         <file>img/LANShare.ico</file>
         <file>img/ic_launcher.png</file>
         <file>img/ic_launcher_32.png</file>
@@ -22,6 +22,17 @@
         <file>img/ic_battery4.png</file>
         <file>img/ic_charging.png</file>
         <file>img/ic_null.png</file>
+        <file>img/alipay.jpg</file>
+        <file>img/wx.jpg</file>
+
+        <file>img/svgs/radio_checked_light.svg</file>
+        <file>img/svgs/radio_checked_dark.svg</file>
+        <file>img/svgs/checkbox_checked_light.svg</file>
+        <file>img/svgs/checkbox_checked_dark.svg</file>
+        <file>img/svgs/checkbox_checked_dark.png</file>
+        <file>img/svgs/radio_checked_emerald.svg</file>
+        <file>img/svgs/checkbox_checked_emerald.svg</file>
+
     </qresource>
     <qresource prefix="/web">
         <file>web/lanshare.html</file>
@@ -53,10 +64,14 @@
         <file>web/drawable/ic_phone.png</file>
         <file>web/drawable/ic_win.png</file>
         <file>web/drawable/rc_file_blue_icon.png</file>
-        <file>web/drawable/rc_file_icon_file.png</file>
+        <file>img/svgs/rc_file_icon_file.svg</file>
     </qresource>
     <qresource prefix="/style">
         <file>style/style_light.qss</file>
         <file>style/style_dark.qss</file>
+        <file>style/style_emerald.qss</file>
+    </qresource>
+    <qresource prefix="/translations">
+        <file>translations/lanshare_en.qm</file>
     </qresource>
 </RCC>

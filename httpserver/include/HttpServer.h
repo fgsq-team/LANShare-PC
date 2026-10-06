@@ -7,9 +7,10 @@
 
 
 #include <QSharedPointer>
+#include <memory>
 #include "PathEntry.h"
 
-class HttpServer {
+class HttpServer : public std::enable_shared_from_this<HttpServer> {
 
 public :
     HttpServer();
@@ -26,7 +27,7 @@ public :
 
     void setRequestFilter(RequestFilter requestFilter);
 
-    static bool pathMatches(const std::string &registeredPathPattern, const std::string &requestPath);
+    static bool pathMatches(const QString &registeredPathPattern, const QString &requestPath);
 
 private:
     RequestFilter requestFilter = nullptr;

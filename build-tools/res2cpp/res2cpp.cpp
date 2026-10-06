@@ -5,6 +5,8 @@
 #include <vector>
 #include <filesystem>
 #include <cstring>
+
+#include "Type.h"
 //#include "resource.h"
 
 extern int openData(const std::string &resName);
@@ -17,15 +19,15 @@ namespace fs = std::filesystem;
 
 struct FileEntry {
     std::string path;
-    long beginOffset;
-    long endOffset;
-    long fileSize;
+    mlong beginOffset;
+    mlong endOffset;
+    mlong fileSize;
 };
 
 std::vector<FileEntry> entrys;
-long rindex = 0;
-long lastIndex = 0;
-bool first = true;
+mlong rindex = 0;
+mlong lastIndex = 0;
+mlong first = true;
 
 std::string fileToHex(int subNameLength, const std::string &filename) {
     std::ifstream file(filename, std::ios::binary);

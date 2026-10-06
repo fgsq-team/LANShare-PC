@@ -39,19 +39,3 @@ bool Token::isNull() const {
 void Token::setNull(bool null) {
     Token::null = null;
 }
-
-void Token::setPass(int pass) {
-    this->pass = pass;
-}
-
-int Token::getPass() const {
-    return pass;
-}
-
-void Token::setName(const QString &name) {
-    this->name = name;
-}
-
-QString Token::getName() const {
-    return name;
-}

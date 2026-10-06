@@ -5,7 +5,6 @@
 #include "Device.h"
 
 
-
 const QString &Device::getDevName() const {
     return devName;
 }
@@ -102,18 +101,30 @@ void Device::setChargeStatus(mbyte chargeStatus) {
     Device::chargeStatus = chargeStatus;
 }
 
-LWebSocketServer * Device::getWebSocketServer() const {
-    return webSocketServer;
+QJsonObject Device::toJsonObject() {
+    QJsonObject jsonObject;
+    jsonObject["devName"] = devName;
+    jsonObject["devIp"] = devIP;
+    jsonObject["devNetMask"] = devNetMask;
+    jsonObject["devBrotIp"] = devBrotIP;
+    jsonObject["devPort"] = devPort;
+    jsonObject["devMode"] = devMode;
+    jsonObject["dataVersion"] = dataVersion;
+    jsonObject["uniqueUUid"] = uniqueUUid;
+    jsonObject["batteryLevel"] = batteryLevel;
+    jsonObject["chargeStatus"] = chargeStatus;
+    return jsonObject;
 }
 
-void Device::setWebSocketServer(LWebSocketServer *webSocketServer) {
-    this->webSocketServer = webSocketServer;
-}
-
-void Device::setCanRemove(bool canRemove) {
-    this->canRemove = canRemove;
-}
-
-bool Device::getCanRemove() const {
-    return canRemove;
+void Device::fromJsonObject(QJsonObject jsonObject) {
+    devName = jsonObject["devName"].toString();
+    devIP = jsonObject["devIp"].toString();
+    devNetMask = jsonObject["devNetMask"].toString();
+    devBrotIP = jsonObject["devBrotIp"].toString();
+    devPort = jsonObject["devPort"].toInt();
+    devMode = jsonObject["devMode"].toInt();
+    dataVersion = jsonObject["dataVersion"].toInt();
+    uniqueUUid = jsonObject["uniqueUUid"].toString();
+    batteryLevel = jsonObject["batteryLevel"].toInt();
+    chargeStatus = jsonObject["chargeStatus"].toInt();
 }

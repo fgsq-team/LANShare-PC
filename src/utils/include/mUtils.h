@@ -10,6 +10,9 @@
 #include <QString>
 #include <QColor>
 #include <QWidget>
+#include <QFileInfo>
+
+#include "Type.h"
 
 class mUtils {
 public:
@@ -17,15 +20,21 @@ public:
 
     static void setFileAssociation(bool del);
 
-    static QString generateRandomString(int length);
-
     static QColor parseColorFromStyleSheet(QString styleSheet, const QString &className, const QString &propertyName);
 
     static bool isDarkMode();
 
-    static  QString decMessage(const QString &message, const QString &key);
+    static QString decMessage(const QString &message, const QString &key);
 
     static QByteArray encMessage(const QString &message, const QString &key);
+
+    static QString avoidDuplication(const QFileInfo &outFile);
+
+    static void createEmptyFileWithSaveFile(const QString &filename);
+
+    static void encData(mbyte *buffer, int len, int off, mlong index);
+
+    static void decData(mbyte *buffer, int len, int off, mlong index);
 };
 
 

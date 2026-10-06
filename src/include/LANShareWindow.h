@@ -6,7 +6,7 @@
 #include "Message.h"
 #include "Device.h"
 #include "MessageFile.h"
-#include "MessageDB_V3.h"
+#include "MessageDB.h"
 #include "LFile.h"
 #include "EditTextEventFilter.h"
 #include <QListWidgetItem>
@@ -64,8 +64,8 @@ Q_OBJECT
 public:
     explicit LANShareWindow(QWidget *parent = nullptr);
 
-    void dealMessage(Message *messageW, QListWidgetItem *item) const;
-    void insertMessage(Message *messageW, QListWidgetItem *item) const;
+    void dealMessage(Message *messageW, QListWidgetItem *item);
+    void insertMessage(Message *messageW, QListWidgetItem *item);
 
     // Set window to top layer
     void setWindowToTopLayer();
@@ -74,7 +74,7 @@ public:
 
     static LANShareWindow *getInstance();
 
-    void updateWebServiceIp() const;
+    void updateWebServiceIp();
 
     ~LANShareWindow() override;
 
@@ -82,7 +82,7 @@ signals:
 
     void sigNewMessage(Device device, QString message, bool isLeft = false);
 
-    void sigNewWebClient(QString token, QString ip, QString name);
+    void sigNewWebClient(QString token, QString ip);
 
     void sigRecviceFile(LFile *lFile, QString uuid, QString message, QString userName, mlong fileSize,
                         bool left, bool isFile, bool completed);
@@ -110,7 +110,7 @@ public slots:
 
     void newMessage(Device device, QString message, bool isLeft);
 
-    void newWebClient(const QString &token, const QString &ip, const QString &name);
+    void newWebClient(QString token, QString ip);
 
     void recviceFile(LFile *lFile, const QString &uuid, QString message, QString userName, mlong fileSize, bool left,
                      bool isFile, bool completed);
@@ -129,9 +129,7 @@ public slots:
 
     void on_setting_triggered();
 
-void deleteTime(const QString &uuid);
-
-void on_actionclaerAll_triggered();
+    void on_actionclaerAll_triggered();
 
     void on_actionclearMessage_triggered();
 
@@ -155,9 +153,7 @@ void on_actionclaerAll_triggered();
 
     void checkVersionCallback(QNetworkReply *reply);
 
-void checkAndAddChatTime(const QString &bindId);
-
-void loadDeviceList();
+    void loadDeviceList();
 
     void onScroll(int value);
 
@@ -192,7 +188,6 @@ private:
     int pageSize = 10;
     int pageCount = 0;
     bool loadingData = false;
-    mlong lastMessageTime = 0;
 };
 
 #endif // MAINWINDOW_H

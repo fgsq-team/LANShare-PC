@@ -11,7 +11,6 @@
 #include <string>
 #include <QDir>
 #endif
-
 #if defined(PLATFORM_LINUX)
 // 获取电池设备路径
 QString getBatteryPath() {
@@ -49,6 +48,10 @@ QString readFileContent(const QString &path)
 
 #endif
 
+#if defined(PLATFORM_MACOS)
+#include <IOKit/ps/IOPowerSources.h>
+#include <IOKit/ps/IOPSKeys.h>
+#endif
 
 
 int BatteryUtils::getBatteryPercentage()
@@ -80,6 +83,43 @@ int BatteryUtils::getBatteryPercentage()
         // qWarning() << "Failed to parse battery capacity.";
         return -1; // 表示解析失败
     }
+#elif defined(PLATFORM_MACOS)
+#elif defined(PLATFORM_MACOS)
+    CFTypeRef powerInfo = IOPSCopyPowerSourcesInfo();
+    if (!powerInfo) {
+        return -1;
+    }
+
+    CFArrayRef powerSources = IOPSCopyPowerSourcesList(powerInfo);
+    if (!powerSources) {
+        CFRelease(powerInfo);
+        return -1;
+    }
+
+    int percentage = -1;
+    CFIndex count = CFArrayGetCount(powerSources);
+    for (CFIndex i = 0; i < count; i++) {
+        CFDictionaryRef source = (CFDictionaryRef)CFArrayGetValueAtIndex(powerSources, i);
+        CFStringRef name = (CFStringRef)CFDictionaryGetValue(source, CFSTR(kIOPSNameKey));
+        if (name) {
+            CFNumberRef capacity = (CFNumberRef)CFDictionaryGetValue(source, CFSTR(kIOPSCurrentCapacityKey));
+            CFNumberRef maxCapacity = (CFNumberRef)CFDictionaryGetValue(source, CFSTR(kIOPSMaxCapacityKey));
+
+            if (capacity && maxCapacity) {
+                int currentCap, maxCap;
+                CFNumberGetValue(capacity, kCFNumberIntType, &currentCap);
+                CFNumberGetValue(maxCapacity, kCFNumberIntType, &maxCap);
+
+                if (maxCap > 0) {
+                    percentage = (currentCap * 100) / maxCap;
+                    break;
+                }
+            }
+        }
+    }
+    CFRelease(powerSources);
+    CFRelease(powerInfo);
+    return percentage;
 #else
     return -1; // 不支持的平台
 #endif
@@ -95,14 +135,10 @@ int BatteryUtils::getBatteryStatus()
         return -1;
     }
 #elif defined(PLATFORM_LINUX)
-    QString batteryPath = getBatteryPath();
-    if (batteryPath.isEmpty()) {
-        return -1; // 表示没有找到电池
-    }
-    QString capacityFile = batteryPath + "/status";
-    std::ifstream statusFile(capacityFile.toStdString());
+    std::ifstream statusFile("/sys/class/power_supply/BAT0/status");
     if (!statusFile.is_open())
     {
+        // qDebug() << "Failed to open battery status file.";
         return -1;
     }
     std::string status;
@@ -124,6 +160,37 @@ int BatteryUtils::getBatteryStatus()
     {
         return -1;
     }
+#elif defined(PLATFORM_MACOS)
+    CFTypeRef powerInfo = IOPSCopyPowerSourcesInfo();
+    if (!powerInfo) {
+        return -1;
+    }
+    CFArrayRef powerSources = IOPSCopyPowerSourcesList(powerInfo);
+    if (!powerSources) {
+        CFRelease(powerInfo);
+        return -1;
+    }
+    int status = -1;
+    CFIndex count = CFArrayGetCount(powerSources);
+    for (CFIndex i = 0; i < count; i++) {
+        CFDictionaryRef source = (CFDictionaryRef)CFArrayGetValueAtIndex(powerSources, i);
+        CFStringRef name = (CFStringRef)CFDictionaryGetValue(source, CFSTR(kIOPSNameKey));
+        if (name) {
+            CFStringRef powerState = (CFStringRef)CFDictionaryGetValue(source, CFSTR(kIOPSPowerSourceStateKey));
+            if (powerState) {
+                if (CFStringCompare(powerState, CFSTR(kIOPSACPowerValue), 0) == kCFCompareEqualTo) {
+                    status = 1; // 充电中或已充满
+                    break;
+                } else if (CFStringCompare(powerState, CFSTR(kIOPSBatteryPowerValue), 0) == kCFCompareEqualTo) {
+                    status = 0; // 使用电池供电
+                    break;
+                }
+            }
+        }
+    }
+    CFRelease(powerSources);
+    CFRelease(powerInfo);
+    return status;
 #else
         return -1;
 #endif

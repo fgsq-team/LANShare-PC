@@ -1,21 +1,20 @@
-#include <DataDec.h>
-
 #include "LANShareWindow.h"
 #include "LANShare.h"
-#include "Config.h"
+#include "Config.hpp"
 #include "DataEnc.h"
 #include "CleanupTool.h"
 #include "SignalHandler.h"
+#include "TranslationManager.h"
 #include <QApplication>
 #include <thread>
 #include <QLocalSocket>
 #include <QLocalServer>
 #include <QCoreApplication>
 #include <QImageReader>
+#include <cstdio>
 void installTranslator();
 
 bool OPEN_DEBUG = true;
-Config config;
 const QString serverName = "lanshare_server";
 
 void readSocketData(QLocalSocket *socket, LANShareWindow *w) {
@@ -46,7 +45,9 @@ void readSocketData(QLocalSocket *socket, LANShareWindow *w) {
 
 int main(int argc, char *argv[]) {
     QApplication a(argc, argv);
-    config.init();
+    Config::instance().init();
+    // 初始化翻译管理器
+    TranslationManager::instance()->loadLanguageFromSettings();
     QFont f("幼圆", 9);
     QApplication::setFont(f);
     QApplication::setQuitOnLastWindowClosed(false);

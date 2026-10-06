@@ -82,29 +82,7 @@
         </rect>
        </property>
        <property name="styleSheet">
-        <string notr="true">QPushButton
-{
-    font:13px;
-    color:black;
-    background-color:rgb(255 , 255 , 255);
-    border-radius:5px;
-    height:25px;
-    width:110px;
-    border: 1px solid #dcdcdc;
-}
-
-QPushButton:hover
-{
-    background-color:#f0f0f0;
-}
-
-QPushButton:pressed
-{
-    background-color:#f0f0f0;
-    padding-left:3px;
-    padding-top:3px;
-}
-</string>
+        <string notr="true"/>
        </property>
        <property name="text">
         <string>发送</string>

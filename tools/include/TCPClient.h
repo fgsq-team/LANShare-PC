@@ -23,8 +23,6 @@ public:
 
     ~TCPClient();
 
-    int getRemotePort() const;
-
     bool connect();
 
     bool isConnected() const;
@@ -39,7 +37,7 @@ public:
 
     int read() const;
 
-    long skip(mlong l) const;
+    mlong skip(mlong l) const;
 
     int recvo(void *buff, size_t len, int flag = 0) const;
 

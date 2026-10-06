@@ -19,7 +19,7 @@ CopyableTextDialog::CopyableTextDialog(const QString &initialText, QWidget *pare
 void CopyableTextDialog::copyText() {
     QClipboard *clipboard = QApplication::clipboard();
     clipboard->setText(textEdit->toPlainText());
-    QMessageBox::information(this, "提示", "文本已复制到剪切板");
+    QMessageBox::information(this, tr("提示"), tr("文本已复制到剪切板"));
     close();
 }
 
@@ -29,9 +29,9 @@ void CopyableTextDialog::setupUI() {
     textEdit->installEventFilter(EditTextEventFilter::getInstance());
 
     layout->addWidget(textEdit);
-    QPushButton *copyButton = new QPushButton("复制全部文本", this);
+    QPushButton *copyButton = new QPushButton(tr("复制全部文本"), this);
     connect(copyButton, &QPushButton::clicked, this, &CopyableTextDialog::copyText);
     layout->addWidget(copyButton);
     setLayout(layout);
-    setWindowTitle("自由复制文本");
+    setWindowTitle(tr("自由复制文本"));
 }

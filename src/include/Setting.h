@@ -13,6 +13,9 @@ Q_OBJECT
 
 private:
     void closeEvent(QCloseEvent *event);
+#ifdef Q_OS_WIN
+    void setAutoStart(bool enable);
+#endif
 
 public:
     explicit Setting(QWidget *parent = nullptr);

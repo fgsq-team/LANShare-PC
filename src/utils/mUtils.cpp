@@ -5,13 +5,13 @@
 #include "mUtils.h"
 #include "Type.h"
 #include "qaesencryption.h"
-#include "Config.h"
+#include "Config.hpp"
 #include <QString>
 #include <QDir>
 #include <QWidget>
 #include <QCoreApplication>
-#include <qrandom.h>
 #include <QSettings>
+#include <QSaveFile>
 #include <QRegularExpression>
 
 #if defined(PLATFORM_WINDOWS)
@@ -62,7 +62,7 @@ bool mUtils::isDarkMode() {
 }
 
 QColor mUtils::parseColorFromStyleSheet(QString styleSheet, const QString &className, const QString &propertyName) {
-    QString pattern = QString(R"(%1\s*\{[^}]*%2\s*:\s*([^;]+);)").arg(className, propertyName);
+    QString pattern = QString(R"(%1\s*\{[^}]*\s+%2\s*:\s*([^;]+);)").arg(className, propertyName.trimmed());
     QRegularExpression regex(pattern);
     QRegularExpressionMatch match = regex.match(styleSheet);
     if (match.hasMatch()) {
@@ -128,13 +128,49 @@ void mUtils::setFileAssociation(bool del) {
     }
 }
 
-QString mUtils::generateRandomString(int length) {
-    const QString characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    QString result;
-    result.reserve(length);
-    for (int i = 0; i < length; i++) {
-        int index = QRandomGenerator::global()->bounded(characters.length());
-        result.append(characters.at(index));
+QString mUtils::avoidDuplication(const QFileInfo &outFile) {
+    QString name = outFile.fileName();
+    if (outFile.exists()) {
+        for (int s = 1; s < 65535; s++) {
+            QString str;
+            if (name.contains(".")) {
+                QString prefix = name.mid(0, name.lastIndexOf(".")) + "(" + QString::number(s) + ")";
+                QString suffix = name.mid(name.lastIndexOf("."));
+                str = prefix + suffix;
+            } else {
+                str = name + "(" + QString::number(s) + ")";
+            }
+            QFileInfo fileInfo = QFileInfo(outFile.path(), str);
+            if (!fileInfo.exists()) {
+                return fileInfo.filePath();
+            }
+        }
     }
-    return result;
+    return outFile.filePath();
+}
+
+
+void mUtils::createEmptyFileWithSaveFile(const QString& filename) {
+    QSaveFile file(filename);
+    if (file.open(QIODevice::WriteOnly)) {
+        file.commit();  // 提交空文件
+    }
+}
+
+void mUtils::encData(mbyte *buffer, int len, int off, mlong index) {
+    int j = 0;
+    for (int i = off; i < len + off; i++) {
+        int v = (buffer[i] - 1) ^ (int) ((index + j) & 0xFF);
+        buffer[i] = (mbyte) v;
+        j++;
+    }
+}
+
+void mUtils::decData(mbyte *buffer, int len, int off, mlong index) {
+    int j = 0;
+    for (int i = off; i < len + off; i++) {
+        int v = (buffer[i] ^ (int) ((index + j) & 0xFF)) + 1;
+        buffer[i] = (mbyte) v;
+        j++;
+    }
 }

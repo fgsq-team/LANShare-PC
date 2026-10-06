@@ -7,7 +7,8 @@
 
 DeviceSelecterThread::DeviceSelecterThread(DeviceSelecter *deviceSelecter, LANShare *lanShare) :
         deviceSelecter(deviceSelecter), lanShare(lanShare) {
-    // qDebug() << "开始";
+    qDebug() << "开始";
+
 }
 
 void DeviceSelecterThread::run() {

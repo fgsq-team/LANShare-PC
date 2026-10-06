@@ -22,7 +22,6 @@ SignalHandler::SignalHandler(QSharedMemory *sharedMemory, QLocalServer *localSer
 }
 
 void SignalHandler::handleSignal(int signal) {
-    qDebug() << "handleSignal";
     if (sharedMemory && sharedMemory->isAttached()) {
         sharedMemory->detach();
     }

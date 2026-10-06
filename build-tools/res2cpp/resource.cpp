@@ -3,9 +3,9 @@
 
 struct FileEntry {
     std::string path;
-    long beginOffset;
-    long endOffset;
-    long fileSize;
+    mlong beginOffset;
+    mlong endOffset;
+    mlong fileSize;
 };
 
 static const unsigned char resource_data[] = {
@@ -100,7 +100,7 @@ int openData(const std::string &resName) {
     return -1;
 }
 
-int readData(int fd, char *buff, long offset, int len) {
+int readData(int fd, char *buff, mlong offset, int len) {
     if (fd == -1 || fd >= fileEntrys.size()) {
         return -1;
     }
@@ -113,7 +113,7 @@ int readData(int fd, char *buff, long offset, int len) {
     return canReadSize;
 }
 
-long getFileSize(int fd) {
+mlong getFileSize(int fd) {
     if (fd == -1 || fd >= fileEntrys.size()) {
         return -1;
     }

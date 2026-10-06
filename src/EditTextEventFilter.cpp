@@ -25,7 +25,11 @@ bool EditTextEventFilter::eventFilter(QObject *obj, QEvent *event) {
             QAction *cutAction = contextMenu.addAction("剪切");
             QAction *selectAllAction = contextMenu.addAction("选择全部");
             contextMenu.addAction("取消");
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+            QAction *selectedAction = contextMenu.exec(mouseEvent->globalPosition().toPoint());
+#else
             QAction *selectedAction = contextMenu.exec(mouseEvent->globalPos());
+#endif
             if (selectedAction == copyAction) {
                 textEdit->copy();
             } else if (selectedAction == pasteAction) {

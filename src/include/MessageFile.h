@@ -29,7 +29,7 @@ public:
 
     void setFilePath(const QString &filePath);
 
-    long getFileSize() const;
+    mlong getFileSize() const;
 
     void setFileSize(mlong fileSize);
 
@@ -77,6 +77,10 @@ private:
     void initView();
 
     void adjustTextWidth();
+
+    void updateFileIcon();
+
+    QPixmap loadSvgPixmap(const QString &path, int size) const;
 
 };
 

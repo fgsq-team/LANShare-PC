@@ -14,8 +14,6 @@
 #include <QUrl>
 #include <QRegularExpression>
 #include <thread>
-#include <regex>
-std::vector<PathEntry> handlerMap;
 
 QString readHttpLine(TCPClient *is) {
     QString sb;
@@ -40,20 +38,20 @@ QString readHttpLine(TCPClient *is) {
     return sb;
 }
 
-bool HttpServer::pathMatches(const std::string &registeredPathPattern, const std::string &requestPath) {
+bool HttpServer::pathMatches(const QString &registeredPathPattern, const QString &requestPath) {
     // 使用通配符 "*" 进行路径匹配
-    std::string regexPattern = registeredPathPattern;
-    std::regex wildcard("\\*");
-    regexPattern = std::regex_replace(regexPattern, wildcard, "[^/]*"); // 匹配除了 '/' 之外的任何字符
-    if (!regexPattern.empty() && regexPattern.back() != '/' && regexPattern.back() != '$') {
+    QString regexPattern = registeredPathPattern;
+    regexPattern.replace("*", "[^/]*"); // 匹配除了 '/' 之外的任何字符
+    if (!regexPattern.endsWith("[^/]")) {
         // 如果模式不以 "[^/]" 结尾，添加 "$" 以确保只匹配整个路径段
         regexPattern += "$";
     }
-    std::regex regex(regexPattern);
-    std::smatch match;
+    QRegularExpression regex(regexPattern);
+    QRegularExpressionMatch match = regex.match(requestPath);
     // 返回是否匹配成功
-    return std::regex_search(requestPath, match, regex);
+    return match.hasMatch();
 }
+
 
 HttpServer::HttpServer() = default;
 
@@ -82,16 +80,18 @@ void HttpServer::startServer() {
         return;
     }
     std::unique_ptr<TCPClient> tcpClient = nullptr;
+    auto self = shared_from_this();
     while ((tcpClient = tcpServer.accept()) != nullptr) {
-        std::thread([tcpClient = std::move(tcpClient), httpServer = this]() mutable {
-            httpServer->newClient(tcpClient.get(), {});
+        std::thread([tcpClient = std::move(tcpClient), self]() mutable {
+            self->newClient(tcpClient.get(), {});
             tcpClient->close();
         }).detach();
     }
 }
 
 QString formatUrl(const QString &url) {
-    return Utils::urlDecode(url.toUtf8().constData()).getCString();
+    LString decoded = Utils::urlDecode(url.toUtf8().constData());
+    return QString::fromUtf8(decoded.getCString(), decoded.getLength());
 }
 
 void HttpServer::newClient(TCPClient *tcpClient, const QString &method) {
@@ -116,7 +116,7 @@ void HttpServer::newClient(TCPClient *tcpClient, const QString &method) {
             int i = url.indexOf("?");
             if (i > 0) {
                 QString requestURL = url.left(i);
-                //                qDebug() << "url:" << formatUrl(url);
+//                qDebug() << "url:" << formatUrl(url);
                 request->setRequestURL(formatUrl(requestURL));
                 request->setRequestURLParams(url.mid(i + 1));
                 if (!request->getRequestURLParams().isEmpty()) {
@@ -125,8 +125,8 @@ void HttpServer::newClient(TCPClient *tcpClient, const QString &method) {
                         if (p.contains("=")) {
                             QString paramsKey = p.left(p.indexOf("="));
                             QString paramsValue = p.mid(p.indexOf("=") + 1);
-                            //                            qDebug() << "paramsKey:" << formatUrl(paramsKey);
-                            //                            qDebug() << "paramsValue:" << formatUrl(paramsValue);
+//                            qDebug() << "paramsKey:" << formatUrl(paramsKey);
+//                            qDebug() << "paramsValue:" << formatUrl(paramsValue);
                             request->addPathParams(formatUrl(paramsKey), formatUrl(paramsValue));
                         }
                     }
@@ -138,7 +138,7 @@ void HttpServer::newClient(TCPClient *tcpClient, const QString &method) {
             }
             request->setRequestMethod(key);
             request->addHeader(key, value);
-            //            qDebug() << "requestURL: " << request->getRequestURL();
+//            qDebug() << "requestURL: " << request->getRequestURL();
         } else {
             int i = key.indexOf(":");
             if (i > 0) {
@@ -146,18 +146,18 @@ void HttpServer::newClient(TCPClient *tcpClient, const QString &method) {
             }
             request->addHeader(key, value);
         }
-        //        qDebug() << "key: " << key << " value: " << value;
+//        qDebug() << "key: " << key << " value: " << value;
         lineNum++;
     }
     // 请求头解析完毕
     request->setHeaderReady(true);
-    //    qDebug() << "end";
+//    qDebug() << "end";
     auto response = std::make_unique<Response>(tcpClient);
     response->setRangeLength(request->getRangeLength());
-    boolean isMatch = false;
+    bool isMatch = false;
     for (const auto &handle: handlerMap) {
         QString path = handle.getPath();
-        isMatch = pathMatches(path.toStdString(), request->getRequestURL().toStdString());
+        isMatch = pathMatches(path, request->getRequestURL());
         if (isMatch) {
             if (!handle.getMethod().isEmpty() && request->getRequestMethod() != handle.getMethod()) {
                 response->write405();
@@ -179,10 +179,7 @@ void HttpServer::newClient(TCPClient *tcpClient, const QString &method) {
     if (!isMatch) {
         response->write404();
     }
-    if (request->getRequestMethod() == "POST") {
-        TimeTools::sleep_s(1);
-    }
-    // tcpClient->close();
+    // TimeTools::sleep_ms(100);
 }
 
 void HttpServer::setRequestFilter(RequestFilter requestFilter) {

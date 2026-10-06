@@ -1,61 +1,76 @@
 #include "Setting.h"
 #include "ui_Setting.h"
 #include "LANShareWindow.h"
-#include "Config.h"
+#include "Config.hpp"
+#include "TranslationManager.h"
 #include <QFileDialog>
 #include <QDebug>
 #include <QMainWindow>
+#include <QSettings>
+#include <QCoreApplication>
 
-Setting::Setting(QWidget *parent) :
-        QWidget(parent),
-        ui(new Ui::Setting) {
+Setting::Setting(QWidget *parent) : QWidget(parent),
+                                    ui(new Ui::Setting) {
     ui->setupUi(this);
-    setWindowTitle("设置");
+    setWindowTitle(tr("设置"));
     setWindowFlags(Qt::Window | Qt::WindowCloseButtonHint);
-    setFixedSize(452, 351);
+    setFixedSize(500, 380);
     setWindowModality(Qt::ApplicationModal);
     themeRadio = new QButtonGroup(this);
     themeRadio->addButton(ui->radioButton_auto);
     themeRadio->addButton(ui->radioButton_dark);
     themeRadio->addButton(ui->radioButton_light);
+    themeRadio->addButton(ui->radioButton_emerald);
     // 连接QButtonGroup的按钮点击信号到槽函数
     connect(themeRadio, QOverload<QAbstractButton *>::of(&QButtonGroup::buttonClicked),
             this, &Setting::onThemeRadioButtonClicked);
-    ui->webService->setChecked(config.webService);
-    ui->openWebService->setChecked(config.openWebService);
-    ui->userName->setPlainText(config.clientName);
-    ui->filePath->setPlainText(config.saveFilePath);
-    ui->tcpPort->setPlainText(QString::number(config.tcpPort));
-    ui->udpPort->setPlainText(QString::number(config.udpPort));
-    ui->receivceMute->setChecked(config.receivceMute);
-    ui->encdata->setChecked(config.encData);
-    ui->contextMenu->setChecked(config.contextMenu);
-    ui->acceptRecvFiles->setChecked(config.acceptRecvFiles);
-    ui->allowBackgroundRunning->setChecked(config.allowBackgroundRunning);
-    ui->messageKey->setPlainText(config.messageKey);
-    if (config.themeName.isEmpty()) {
-        ui->radioButton_auto->setChecked(true);
-    } else if (config.themeName == "dark") {
-        ui->radioButton_dark->setChecked(true);
-    } else if (config.themeName == "light") {
-        ui->radioButton_light->setChecked(true);
+    ui->webService->setChecked(Config::instance().webService);
+    ui->openWebService->setChecked(Config::instance().openWebService);
+    ui->userName->setPlainText(Config::instance().clientName);
+    ui->filePath->setPlainText(Config::instance().saveFilePath);
+    ui->tcpPort->setPlainText(QString::number(Config::instance().tcpPort));
+    ui->udpPort->setPlainText(QString::number(Config::instance().udpPort));
+    ui->receivceMute->setChecked(Config::instance().receivceMute);
+    ui->encdata->setChecked(Config::instance().encData);
+    ui->contextMenu->setChecked(Config::instance().contextMenu);
+    ui->acceptRecvFiles->setChecked(Config::instance().acceptRecvFiles);
+    ui->allowBackgroundRunning->setChecked(Config::instance().allowBackgroundRunning);
+    ui->autoStart->setChecked(Config::instance().autoStart);
+    ui->messageKey->setPlainText(Config::instance().messageKey);
+    
+    // 设置语言选择框
+    if (Config::instance().language == "zh_CN") {
+        ui->languageComboBox->setCurrentIndex(0);
+    } else if (Config::instance().language == "en") {
+        ui->languageComboBox->setCurrentIndex(1);
     }
-
+    
+    if (Config::instance().themeName.isEmpty()) {
+        ui->radioButton_auto->setChecked(true);
+    } else if (Config::instance().themeName == "dark") {
+        ui->radioButton_dark->setChecked(true);
+    } else if (Config::instance().themeName == "light") {
+        ui->radioButton_light->setChecked(true);
+    } else if (Config::instance().themeName == "emerald") {
+        ui->radioButton_emerald->setChecked(true);
+    }
 }
 
 void Setting::onThemeRadioButtonClicked() {
     QAbstractButton *button = themeRadio->checkedButton();
     if (button == ui->radioButton_dark) {
-        config.themeName = "dark";
+        Config::instance().themeName = "dark";
     } else if (button == ui->radioButton_light) {
-        config.themeName = "light";
+        Config::instance().themeName = "light";
+    } else if (button == ui->radioButton_emerald) {
+        Config::instance().themeName = "emerald";
     } else {
-        config.themeName = "";
+        Config::instance().themeName = "";
     }
-    config.setTheme(config.themeName);
-    qDebug() << "themeName:" << config.themeName;
-    QSettings *settings = config.getSettings();
-    settings->setValue(THEME, config.themeName);
+    Config::instance().setTheme(Config::instance().themeName);
+    qDebug() << "themeName:" << Config::instance().themeName;
+    QSettings *settings = Config::instance().getSettings();
+    settings->setValue(THEME, Config::instance().themeName);
 }
 
 Setting::~Setting() {
@@ -65,8 +80,8 @@ Setting::~Setting() {
 // 选择文件夹
 void Setting::on_selectPath_clicked() {
     QString srcDirPath = QFileDialog::getExistingDirectory(
-            this, "选择文件夹",
-            config.saveFilePath);
+        this, tr("选择文件夹"),
+        Config::instance().saveFilePath);
     qDebug() << srcDirPath;
     if (!srcDirPath.isEmpty()) {
         ui->filePath->setPlainText(srcDirPath);
@@ -78,38 +93,67 @@ void Setting::on_receivceMute_stateChanged(int state) {
 }
 
 void Setting::closeEvent(QCloseEvent *event) {
-    QSettings *settings = config.getSettings();
+    QSettings *settings = Config::instance().getSettings();
 
-    config.clientName = ui->userName->toPlainText();
-    config.saveFilePath = ui->filePath->toPlainText();
-    config.messageKey = ui->messageKey->toPlainText();
-    config.tcpPort = QString(ui->tcpPort->toPlainText()).toInt();
-    config.udpPort = QString(ui->udpPort->toPlainText()).toInt();
-    config.receivceMute = ui->receivceMute->isChecked();
-    config.encData = ui->encdata->isChecked();
-    config.contextMenu = ui->contextMenu->isChecked();
-    config.webService = ui->webService->isChecked();
-    config.openWebService = ui->openWebService->isChecked();
-    config.acceptRecvFiles = ui->acceptRecvFiles->isChecked();
-    config.allowBackgroundRunning = ui->allowBackgroundRunning->isChecked();
+    Config::instance().clientName = ui->userName->toPlainText();
+    Config::instance().saveFilePath = QDir::cleanPath(ui->filePath->toPlainText());
+    Config::instance().messageKey = ui->messageKey->toPlainText();
+    Config::instance().tcpPort = QString(ui->tcpPort->toPlainText()).toInt();
+    Config::instance().udpPort = QString(ui->udpPort->toPlainText()).toInt();
+    Config::instance().receivceMute = ui->receivceMute->isChecked();
+    Config::instance().encData = ui->encdata->isChecked();
+    Config::instance().contextMenu = ui->contextMenu->isChecked();
+    Config::instance().webService = ui->webService->isChecked();
+    Config::instance().openWebService = ui->openWebService->isChecked();
+    Config::instance().acceptRecvFiles = ui->acceptRecvFiles->isChecked();
+    Config::instance().allowBackgroundRunning = ui->allowBackgroundRunning->isChecked();
+    Config::instance().autoStart = ui->autoStart->isChecked();
+    
+    // 保存语言设置
+    if (ui->languageComboBox->currentIndex() == 0) {
+        Config::instance().language = "zh_CN";
+    } else if (ui->languageComboBox->currentIndex() == 1) {
+        Config::instance().language = "en";
+    }
+    
+    // 应用语言设置
+    TranslationManager::instance()->setLanguage(Config::instance().language);
 
-    settings->setValue(USER_NAME, config.clientName);
-    settings->setValue(FILE_PATH, config.saveFilePath);
-    settings->setValue(TCP_PORT, config.tcpPort);
-    settings->setValue(UDP_PORT, config.udpPort);
-    settings->setValue(RECEIVE_MUTE, config.receivceMute);
-    settings->setValue(ENC_DATA, config.encData);
-    settings->setValue(CONTEXT_MENU, config.contextMenu);
-    settings->setValue(WEB_SERVICE, config.webService);
-    settings->setValue(OPEN_WEB_SERVICE, config.openWebService);
-    settings->setValue(ACCEPT_RECV_FILES, config.acceptRecvFiles);
-    settings->setValue(ALLOW_BACKGROUND_RUNNING, config.allowBackgroundRunning);
+    settings->setValue(USER_NAME, Config::instance().clientName);
+    settings->setValue(FILE_PATH, Config::instance().saveFilePath);
+    settings->setValue(TCP_PORT, Config::instance().tcpPort);
+    settings->setValue(UDP_PORT, Config::instance().udpPort);
+    settings->setValue(RECEIVE_MUTE, Config::instance().receivceMute);
+    settings->setValue(ENC_DATA, Config::instance().encData);
+    settings->setValue(CONTEXT_MENU, Config::instance().contextMenu);
+    settings->setValue(WEB_SERVICE, Config::instance().webService);
+    settings->setValue(OPEN_WEB_SERVICE, Config::instance().openWebService);
+    settings->setValue(ACCEPT_RECV_FILES, Config::instance().acceptRecvFiles);
+    settings->setValue(ALLOW_BACKGROUND_RUNNING, Config::instance().allowBackgroundRunning);
+    settings->setValue(AUTO_START, Config::instance().autoStart);
+    settings->setValue("language", Config::instance().language);
 
-    QAESEncryption encryption(QAESEncryption::AES_256, QAESEncryption::ECB, QAESEncryption::PKCS7);
-    QByteArray input(config.messageKey.toUtf8());
+#ifdef Q_OS_WIN
+    setAutoStart(Config::instance().autoStart);
+#endif
     QByteArray key = QString(KEY).toUtf8();
+    QAESEncryption encryption(QAESEncryption::AES_256, QAESEncryption::ECB, QAESEncryption::PKCS7);
+    QByteArray input(Config::instance().messageKey.toUtf8());
     QByteArray encodedText = encryption.encode(input, key).toHex();
     settings->setValue(MESSAGE_KEY, QString(encodedText));
     emit sigUpdateSetting();
 }
 
+#ifdef Q_OS_WIN
+void Setting::setAutoStart(bool enable) {
+    QSettings reg("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+                  QSettings::NativeFormat);
+    QString appName = APP_NAME;
+    if (enable) {
+        QString appPath = QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
+        reg.setValue(appName, appPath);
+    } else {
+        reg.remove(appName);
+    }
+}
+#endif

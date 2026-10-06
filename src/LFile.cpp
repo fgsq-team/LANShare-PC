@@ -4,8 +4,19 @@
 
 #include "LFile.h"
 
+#include "CustomDataStream.h"
+
 
 LFile::LFile() {
+}
+
+// 发送某个文件取消传输指令
+void LFile::cancelFileTransfer() {
+    nextStep = false;
+    if (customDataStream == nullptr) {
+        return;
+    }
+    customDataStream->writeString(fileId.toStdString());
 }
 
 const QString &LFile::getPath() const {
@@ -84,11 +95,11 @@ void LFile::setSubFileCount(int subFileCount) {
     LFile::subFileCount = subFileCount;
 }
 
-const std::list<LFile> &LFile::getFileList() const {
+const std::vector<LFile> &LFile::getFileList() const {
     return fileList;
 }
 
-void LFile::setFileList(const std::list<LFile> &fileList) {
+void LFile::setFileList(const std::vector<LFile> &fileList) {
     LFile::fileList = fileList;
 }
 
@@ -98,6 +109,30 @@ mlong LFile::getMediaId() const {
 
 void LFile::setMediaId(mlong mediaId) {
     LFile::mediaId = mediaId;
+}
+
+void LFile::setProgress(int progress) {
+    LFile::progress = progress;
+}
+
+int LFile::getProgress() const {
+    return progress;
+}
+
+void LFile::setCustomDataStream(CustomDataStream *customDataStream) {
+    LFile::customDataStream = customDataStream;
+}
+
+CustomDataStream *LFile::getCustomDataStream() const {
+    return customDataStream;
+}
+
+QString LFile::getFileId() const {
+    return fileId;
+}
+
+void LFile::setFileId(const QString &fileId) {
+    LFile::fileId = fileId;
 }
 
 LFile::TYPE LFile::getType() const {
@@ -133,5 +168,69 @@ void LFile::setIoInter(IOInter *ioInter) {
     LFile::ioInter = ioInter;
 }
 
+mlong LFile::findFile(std::vector<LFile> &listFile, mlong size, const QString &path) {
+    QDir dir(path);
+    qDebug() << "扫描路径:" << path;
+    if (!dir.exists())
+        return false;
+    dir.setFilter(QDir::Dirs | QDir::Files);
+    //    dir.setSorting(QDir::DirsFirst);
+    QFileInfoList list = dir.entryInfoList();
+    int i = 0;
+    mlong fileSize = size;
+    do {
+        const QFileInfo &fileInfo = list.at(i);
+        if (fileInfo.fileName() == "." | fileInfo.fileName() == "..") {
+            i++;
+            continue;
+        }
+        if (fileInfo.isDir()) {
+            fileSize += findFile(listFile, 0, fileInfo.filePath());
+        } else {
+            LFile file;
+            file.setFileName(fileInfo.fileName());
+            file.setIsDirectory(false);
+            file.setFileSize(fileInfo.size());
+            file.setPath(fileInfo.filePath());
+            listFile.push_back(file);
+            fileSize += fileInfo.size();
+            qDebug() << "扫描到文件: " + fileInfo.filePath() << "大小:" << fileInfo.size();
+        }
+        i++;
+    } while (i < list.size());
+    return fileSize;
+}
 
-
+mlong LFile::findFileNew(std::vector<LFile> &listFile, mlong size, const QString &path, const QString &basePath) {
+    QDir dir(path);
+    qDebug() << "扫描路径:" << path;
+    if (!dir.exists())
+        return false;
+    dir.setFilter(QDir::Dirs | QDir::Files);
+    //    dir.setSorting(QDir::DirsFirst);
+    QFileInfoList list = dir.entryInfoList();
+    int i = 0;
+    mlong fileSize = size;
+    do {
+        const QFileInfo &fileInfo = list.at(i);
+        if (fileInfo.fileName() == "." | fileInfo.fileName() == "..") {
+            i++;
+            continue;
+        }
+        if (fileInfo.isDir()) {
+            fileSize += findFileNew(listFile, 0, fileInfo.filePath(), basePath);
+        } else {
+            QString relativePath = fileInfo.absoluteFilePath().remove(0, basePath.length() + 1);
+            LFile file;
+            file.setFileName(relativePath);
+            file.setIsDirectory(false);
+            file.setFileSize(fileInfo.size());
+            file.setPath(fileInfo.filePath());
+            listFile.push_back(file);
+            fileSize += fileInfo.size();
+            qDebug() << "扫描到文件: " + fileInfo.filePath() << "大小:" << fileInfo.size();
+        }
+        i++;
+    } while (i < list.size());
+    return fileSize;
+}

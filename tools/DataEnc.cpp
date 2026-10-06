@@ -94,7 +94,8 @@ DataEnc &DataEnc::putString(const std::string &str) {
 }
 
 DataEnc &DataEnc::putString(const QString &str) {
-    return putString(str.toStdString());
+    auto basic_string = str.toStdString();
+    return putString(basic_string);
 }
 
 

@@ -29,20 +29,10 @@ public:
 
     void setNull(bool null);
 
-    void setPass(int pass);
-
-    int getPass() const;
-
-    void setName(const QString &name);
-
-    QString getName() const;
-
 private:
     QString token;
     QString ip;
-    QString name;
     bool custom;
-    int pass;
     bool null = false;
 };
 

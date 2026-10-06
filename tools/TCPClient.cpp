@@ -16,35 +16,14 @@ TCPClient::TCPClient(int tcp_fd) : tcp_fd(tcp_fd) {
 }
 
 TCPClient::TCPClient(QString ip, int port) : ip(std::move(ip)), port(port) {
+
 }
 
 TCPClient::~TCPClient() {
 }
 
-int TCPClient::getRemotePort() const {
-    sockaddr_storage addr; // 使用 sockaddr_storage 来兼容 IPv4 和 IPv6
-    socklen_t len = sizeof(addr);
-
-    if (getpeername(tcp_fd, (struct sockaddr *) &addr, &len) == -1) {
-        qDebug("Error getting remote address");
-        return -1; // 返回 -1 表示获取失败
-    }
-    if (addr.ss_family == AF_INET) {
-        // IPv4
-        sockaddr_in *addr_in = (struct sockaddr_in *) &addr;
-        return ntohs(addr_in->sin_port);
-    } else if (addr.ss_family == AF_INET6) {
-        // IPv6
-        sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *) &addr;
-        return ntohs(addr_in6->sin6_port);
-    } else {
-        qDebug("Unsupported address family");
-        return -1; // 返回 -1 表示不支持的地址类型
-    }
-}
-
 QString TCPClient::getRemoteIP() const {
-    sockaddr_storage addr; // 使用 sockaddr_storage 来兼容 IPv4 和 IPv6
+       sockaddr_storage addr; // 使用 sockaddr_storage 来兼容 IPv4 和 IPv6
     socklen_t len = sizeof(addr);
 
     if (getpeername(tcp_fd, (struct sockaddr *) &addr, &len) == -1) {
@@ -134,7 +113,7 @@ int TCPClient::recvo(void *buff, int index, size_t len, int flag) const {
 }
 
 
-int TCPClient::close() {
+int TCPClient::close()  {
 #if defined(PLATFORM_WINDOWS)
     return ::closesocket(tcp_fd);
 #elif defined(PLATFORM_ANDROID) || defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS)
@@ -151,24 +130,24 @@ void TCPClient::setFd(int fd) {
     tcp_fd = fd;
 }
 
-long TCPClient::skip(mlong l) const {
+mlong TCPClient::skip(mlong l) const {
     char buffer[1024];
     size_t totalBytesSkipped = 0;
     ssize_t bytesRead;
     while (l > 0) {
         bytesRead = recv(buffer, qMin((int) sizeof(buffer), (int) l));
         if (bytesRead == -1) {
-            return 0; // 或者可以返回 SIZE_MAX 表示失败
+            return 0;  // 或者可以返回 SIZE_MAX 表示失败
         }
         if (bytesRead == 0) {
             // 连接关闭或出现其他问题
-            return (long) totalBytesSkipped;
+            return (mlong) totalBytesSkipped;
         }
         // 跳过接收到的字节数
         l -= bytesRead;
         totalBytesSkipped += bytesRead;
     }
-    return (long) totalBytesSkipped;
+    return (mlong) totalBytesSkipped;
 }
 
 bool TCPClient::isConnected() const {
@@ -178,3 +157,5 @@ bool TCPClient::isConnected() const {
 void TCPClient::setConnected(bool isConnected) {
     TCPClient::connected = isConnected;
 }
+
+

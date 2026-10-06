@@ -1,6 +1,6 @@
 // mediaidpathdbutil.cpp
 #include "MediaIdPathDBUtil.h"
-#include "Config.h"
+#include "Config.hpp"
 #include <QDebug>
 #include <QCoreApplication>
 
@@ -29,7 +29,7 @@ MediaIdPathDBUtil::MediaIdPathDBUtil() {
 
     if (!database.isValid() || !database.isOpen()) {
         database = QSqlDatabase::addDatabase("QSQLITE", "media_id_path_list");
-        database.setDatabaseName(config.lanshareWorkDirPath + "/media_id_path_list.db");
+        database.setDatabaseName(Config::instance().lanshareWorkDirPath + "/media_id_path_list.db");
         database.setUserName("lanshare");
         database.setPassword("uacvbtyaw");
 

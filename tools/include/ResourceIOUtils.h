@@ -29,7 +29,7 @@ public:
 
 private:
     int fd;
-    long offset = 0;
+    mlong offset = 0;
 };
 
 

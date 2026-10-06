@@ -14,7 +14,7 @@ class LHttpServer {
 private:
     LANShare *lanShare;
 public:
-    std::unique_ptr<HttpServer> httpServer;
+    std::shared_ptr<HttpServer> httpServer;
 public:
     LHttpServer(LANShare *lanShare);
 
