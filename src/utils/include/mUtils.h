@@ -96,6 +96,15 @@ public:
      * @param index 索引种子
      */
     static void decData(mbyte *buffer, int len, int off, mlong index);
+
+    /**
+     * 拼接路径
+     * @param base 基础路径
+     * @param sub 子路径
+     * @return 拼接后的路径
+     */
+    static QString joinPath(const QString &base, const QString &sub);
+
 };
 
 

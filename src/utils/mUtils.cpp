@@ -26,18 +26,19 @@
 /**
  * AES-256 解密消息
  */
-QString mUtils::decMessage(const QString &message,const QString& key) {
+QString mUtils::decMessage(const QString &message, const QString &key) {
     QAESEncryption encryption(QAESEncryption::AES_256, QAESEncryption::ECB, QAESEncryption::PKCS7);
     QByteArray input(message.toUtf8());
     QByteArray keyByteArray = key.toUtf8();
-    return QAESEncryption::RemovePadding(encryption.decode(QByteArray::fromHex(input), keyByteArray), QAESEncryption::PKCS7);
+    return QAESEncryption::RemovePadding(encryption.decode(QByteArray::fromHex(input), keyByteArray),
+                                         QAESEncryption::PKCS7);
 }
 
 
 /**
  * AES-256 加密消息
  */
-QByteArray mUtils::encMessage(const QString &message,const QString& key) {
+QByteArray mUtils::encMessage(const QString &message, const QString &key) {
     QAESEncryption encryption(QAESEncryption::AES_256, QAESEncryption::ECB, QAESEncryption::PKCS7);
     QByteArray input(message.toUtf8());
     QByteArray keyByteArray = key.toUtf8();
@@ -63,7 +64,8 @@ bool mUtils::isDarkMode() {
     QPalette palette = QApplication::palette();
     // 判断调色板的背景颜色是否是暗色
     QColor backgroundColor = palette.color(QPalette::Window);
-    int brightness = (backgroundColor.red() * 299 + backgroundColor.green() * 587 + backgroundColor.blue() * 114) / 1000;
+    int brightness = (backgroundColor.red() * 299 + backgroundColor.green() * 587 + backgroundColor.blue() * 114) /
+                     1000;
     return brightness < 128;
 #elif defined(PLATFORM_LINUX)
 #endif
@@ -115,7 +117,7 @@ void mUtils::setFileAssociation(bool del) {
         QString executablePath = QCoreApplication::applicationFilePath();
         QString regPath = R"(HKEY_CURRENT_USER\Software\Classes\*\shell\OpenWithLANShare)";
         QSettings settings(regPath, QSettings::NativeFormat);
-//        QString value = settings.value("command/default", "").toString();
+        //        QString value = settings.value("command/default", "").toString();
         settings.setValue("icon", QDir::toNativeSeparators(executablePath));
         settings.setValue("MUIVerb", "通过LANShare发送");
         settings.beginGroup("command");
@@ -174,10 +176,10 @@ QString mUtils::avoidDuplication(const QFileInfo &outFile) {
 /**
  * 创建空文件（原子写入）
  */
-void mUtils::createEmptyFileWithSaveFile(const QString& filename) {
+void mUtils::createEmptyFileWithSaveFile(const QString &filename) {
     QSaveFile file(filename);
     if (file.open(QIODevice::WriteOnly)) {
-        file.commit();  // 提交空文件
+        file.commit(); // 提交空文件
     }
 }
 
@@ -203,4 +205,20 @@ void mUtils::decData(mbyte *buffer, int len, int off, mlong index) {
         buffer[i] = (mbyte) v;
         j++;
     }
+}
+
+/**
+ * 拼接路径
+ * @param base 基础路径
+ * @param sub 子路径
+ * @return 拼接后的路径
+ */
+QString mUtils::joinPath(const QString &base, const QString &sub) {
+    if (base.isEmpty()) return sub;
+    if (sub.isEmpty()) return base;
+
+    if (base.endsWith('/'))
+        return sub.startsWith('/') ? base + sub.mid(1) : base + sub;
+    else
+        return sub.startsWith('/') ? base + sub : base + '/' + sub;
 }

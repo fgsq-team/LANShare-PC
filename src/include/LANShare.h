@@ -59,7 +59,7 @@ public:
     std::map<std::string, Device> onLineDevices;
     // 自己设备信息
     std::vector<Device> mDevices;
-    bool isRun = true;
+    bool isRunning = true;
     std::unique_ptr<UDPServer> udpServer;
     std::unique_ptr<TCPServer> tcpServer;
     LANShareWindow *mainWindow;

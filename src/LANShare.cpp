@@ -87,9 +87,8 @@ void LANShare::close() {
     for (const auto &device: getMDevices()) {
         deviceManager.noticeDeviceOffLineByIp(device.getDevBrotIp());
     }
-    udpServer->close();
-    tcpServer->close();
-    isRun = false;
-    tcpThreadPool.reset();
-    qDebug() << "LANShare Server is closed";
+    isRunning = false;
+    int result = udpServer->close();
+    int result2 = tcpServer->close();
+    qDebug() << "LANShare Server is closed" << result << result2;
 }

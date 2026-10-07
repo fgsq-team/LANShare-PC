@@ -132,14 +132,23 @@ std::unique_ptr<TCPClient> TCPServer::accept() {
     return std::make_unique<TCPClient>(newClient);
 }
 
-/** 关闭服务器 */
-int TCPServer::close() const {
+/** 关闭服务器（幂等，可安全重复调用） */
+int TCPServer::close() {
+    if (ipv4_fd != -1) {
 #if defined(PLATFORM_WINDOWS)
-    ::closesocket(ipv4_fd);
-    ::closesocket(ipv6_fd);
+        ::closesocket(ipv4_fd);
 #elif defined(PLATFORM_ANDROID) || defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS)
-    ::close(ipv4_fd);
-    ::close(ipv6_fd);
+        ::close(ipv4_fd);
 #endif
+        ipv4_fd = -1;
+    }
+    if (ipv6_fd != -1) {
+#if defined(PLATFORM_WINDOWS)
+        ::closesocket(ipv6_fd);
+#elif defined(PLATFORM_ANDROID) || defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS)
+        ::close(ipv6_fd);
+#endif
+        ipv6_fd = -1;
+    }
     return 0;
 }

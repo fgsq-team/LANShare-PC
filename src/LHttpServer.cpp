@@ -32,19 +32,19 @@ struct MediaFolder {
 
 int SEND_MSSAGE = 1;
 int SYNC_DEVICE_LIST = 2;
-int CHANGE_THEME = 3;  // WebSocket 主题变更命令标识
+int CHANGE_THEME = 3; // WebSocket 主题变更命令标识
 // Paths
 QStringList paths = {
-        "/apps",
-        "/media",
-        "/files",
-        "/compressMedias",
-        "/apkfile/*",
-        "/file/*",
-        "/wss",
-        "/imageload/*",
-        "/chatUploadFile",
-        "/uploadFile"
+    "/apps",
+    "/media",
+    "/files",
+    "/compressMedias",
+    "/apkfile/*",
+    "/file/*",
+    "/wss",
+    "/imageload/*",
+    "/chatUploadFile",
+    "/uploadFile"
 };
 
 std::vector<LWebSocketServer *> websockets;
@@ -56,24 +56,24 @@ void scanMovies(const QString &folderPath, QMap<QString, QStringList> &cacheMap)
     QDir dir(folderPath);
     // 列出文件夹下的所有文件
     QFileInfoList fileInfoList = dir.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
-            foreach(
-            const QFileInfo &fileInfo, fileInfoList) {
-            QString name = fileInfo.suffix().toLower();
-            if (fileInfo.isDir()) {
-                // 如果是文件夹，递归调用自己
-                scanMovies(fileInfo.absoluteFilePath(), cacheMap);
-            } else if (
-                    name == "jpg"
-                    || name == "png"
-                    || name == "bmp"
-                    || name == "jpeg"
-//                    || name == "mp4"
-                    ) {
-                // 如果是图片文件，则将其添加到相应文件夹的列表中
-                QString folderName = fileInfo.dir().absolutePath();
-                cacheMap[folderName] << fileInfo.absoluteFilePath();
-            }
+    foreach(
+        const QFileInfo &fileInfo, fileInfoList) {
+        QString name = fileInfo.suffix().toLower();
+        if (fileInfo.isDir()) {
+            // 如果是文件夹，递归调用自己
+            scanMovies(fileInfo.absoluteFilePath(), cacheMap);
+        } else if (
+            name == "jpg"
+            || name == "png"
+            || name == "bmp"
+            || name == "jpeg"
+            //                    || name == "mp4"
+        ) {
+            // 如果是图片文件，则将其添加到相应文件夹的列表中
+            QString folderName = fileInfo.dir().absolutePath();
+            cacheMap[folderName] << fileInfo.absoluteFilePath();
         }
+    }
 }
 
 void scanImages() {
@@ -178,9 +178,9 @@ void LHttpServer::sendDeviceList() {
 }
 
 void LHttpServer::sendWebSocketMessage(
-        const QString &message, const QString &toDevName, const QString &filePath,
-        int messageType, int devType, const QString &fileSize,
-        bool isLeft, bool isClip, bool isFile
+    const QString &message, const QString &toDevName, const QString &filePath,
+    int messageType, int devType, const QString &fileSize,
+    bool isLeft, bool isClip, bool isFile
 ) {
     std::mutex &websocket_mutex = StringLockManager::getStringLock("websockets");
     websocket_mutex.lock();
@@ -224,20 +224,20 @@ void listDirectory(const QDir &dir, QJsonArray &jsonArray) {
         return a.fileName().compare(b.fileName()) < 0; // 按名称排序
     });
     // 遍历排序后的文件和文件夹
-            foreach(
-            const QFileInfo &fileInfo, fileList) {
-            QJsonObject jsonObject;
-            jsonObject["isDirectory"] = fileInfo.isDir();
-            jsonObject["isFile"] = fileInfo.isFile();
-            jsonObject["length"] = fileInfo.isDir() ? 0 : fileInfo.size(); // 仅对文件设置长度
-            jsonObject["name"] = fileInfo.fileName();
-            QString path = fileInfo.absoluteFilePath();
-            jsonObject["path"] = path;
-            // 获取文件的最后修改时间，并转换为JSON格式的时间字符串
-            QDateTime lastModified = fileInfo.lastModified();
-            jsonObject["time"] = lastModified.toString("yyyy-MM-dd HH:mm:ss");
-            jsonArray.append(jsonObject);
-        }
+    foreach(
+        const QFileInfo &fileInfo, fileList) {
+        QJsonObject jsonObject;
+        jsonObject["isDirectory"] = fileInfo.isDir();
+        jsonObject["isFile"] = fileInfo.isFile();
+        jsonObject["length"] = fileInfo.isDir() ? 0 : fileInfo.size(); // 仅对文件设置长度
+        jsonObject["name"] = fileInfo.fileName();
+        QString path = fileInfo.absoluteFilePath();
+        jsonObject["path"] = path;
+        // 获取文件的最后修改时间，并转换为JSON格式的时间字符串
+        QDateTime lastModified = fileInfo.lastModified();
+        jsonObject["time"] = lastModified.toString("yyyy-MM-dd HH:mm:ss");
+        jsonArray.append(jsonObject);
+    }
 }
 
 void composeZip(zip_t *zip, int pathPrefix, const QString &path) {
@@ -245,8 +245,7 @@ void composeZip(zip_t *zip, int pathPrefix, const QString &path) {
     if (info.isFile()) {
         QString name1 = path.mid(pathPrefix);
         qDebug() << "name1:" << name1;
-        zip_entry_open(zip, name1.toUtf8().constData());
-        {
+        zip_entry_open(zip, name1.toUtf8().constData()); {
             char buf[1024];
             IOUtils ioUtils(info.absoluteFilePath(), QFile::ReadOnly);
             int ten = 0;
@@ -259,7 +258,7 @@ void composeZip(zip_t *zip, int pathPrefix, const QString &path) {
     } else if (info.isDir()) {
         // 列出文件夹下的所有文件
         QFileInfoList fileInfoList = QDir(info.absoluteFilePath()).entryInfoList(
-                QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
+            QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
         for (const QFileInfo &fileInfo: fileInfoList) {
             composeZip(zip, pathPrefix, fileInfo.absoluteFilePath());
         }
@@ -268,9 +267,9 @@ void composeZip(zip_t *zip, int pathPrefix, const QString &path) {
 
 LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
     // webMenus.append(QJsonObject{{"key", "apps"},    {"text", "软件"},     {"icon", "nav-item-media-apps"}});
-    webMenus.append(QJsonObject{{"key", "media"},   {"text", "图片"},     {"icon", "nav-item-media-img"}});
-    webMenus.append(QJsonObject{{"key", "files"},   {"text", "文件列表"}, {"icon", "nav-item-media-folder"}});
-    webMenus.append(QJsonObject{{"key", "chat"},    {"text", "消息记录"}, {"icon", "nav-item-media-record"}});
+    webMenus.append(QJsonObject{{"key", "media"}, {"text", "图片"}, {"icon", "nav-item-media-img"}});
+    webMenus.append(QJsonObject{{"key", "files"}, {"text", "文件列表"}, {"icon", "nav-item-media-folder"}});
+    webMenus.append(QJsonObject{{"key", "chat"}, {"text", "消息记录"}, {"icon", "nav-item-media-record"}});
     // webMenus.append(QJsonObject{{"key", "draw"},    {"text", "远程绘图"}, {"icon", "nav-item-media-record"}});
     scanImages();
     httpServer = std::make_unique<HttpServer>();
@@ -287,7 +286,7 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
                 } else {
                     token = request->getPathParam("token");
                 }
-//                qDebug() << "token:" << token;
+                //                qDebug() << "token:" << token;
                 if (token.isEmpty()) {
                     response->write302("访问权限已失效，请刷新主页后授权", "/");
                     return;
@@ -318,8 +317,8 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
         QJsonDocument doc = QJsonDocument::fromJson(str.toUtf8());
         QJsonObject object = doc.object();
         QString path = object["path"].toString();
-//        QUrl decodedUrl = QUrl::fromPercentEncoding(path.toUtf8());
-//        path = decodedUrl.toString();
+        //        QUrl decodedUrl = QUrl::fromPercentEncoding(path.toUtf8());
+        //        path = decodedUrl.toString();
         qDebug() << "path:" << path;
         bool isBack = object["isBack"].toBool();
         QDir dir(path);
@@ -345,17 +344,17 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
 #if defined(PLATFORM_WINDOWS)
         if (path == DEFAULT_WEB_ROOT_FILE_PATH) {
             QList<QFileInfo> drives = QDir::drives();
-                    foreach(const QFileInfo &drive, drives) {
-                    QJsonObject jsonObject;
-                    jsonObject["isDirectory"] = true;
-                    jsonObject["isFile"] = false;
-                    jsonObject["length"] = 0; // 仅对文件设置长度
-                    jsonObject["name"] = drive.absoluteFilePath().left(2);
-                    jsonObject["path"] = drive.absoluteFilePath();
-                    QDateTime lastModified = drive.lastModified();
-                    jsonObject["time"] = lastModified.toString("yyyy-MM-dd HH:mm:ss");
-                    reusult.append(jsonObject);
-                }
+            foreach(const QFileInfo &drive, drives) {
+                QJsonObject jsonObject;
+                jsonObject["isDirectory"] = true;
+                jsonObject["isFile"] = false;
+                jsonObject["length"] = 0; // 仅对文件设置长度
+                jsonObject["name"] = drive.absoluteFilePath().left(2);
+                jsonObject["path"] = drive.absoluteFilePath();
+                QDateTime lastModified = drive.lastModified();
+                jsonObject["time"] = lastModified.toString("yyyy-MM-dd HH:mm:ss");
+                reusult.append(jsonObject);
+            }
         } else {
             listDirectory(dir, reusult);
         }
@@ -379,7 +378,7 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
         object["pass"] = !s.isEmpty();
         QJsonDocument jsonDocument(object);
         QString jsonString = jsonDocument.toJson(QJsonDocument::Compact);
-//        qDebug() << "token:" << token;
+        //        qDebug() << "token:" << token;
         response->writeString(jsonString);
     });
 
@@ -468,7 +467,7 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
                 device.setDevName(userName);
                 device.setDevMode(Device::L_WIN);
                 emit
-                LANShare::getInstance()->mainWindow->sigNewMessage(device,message, false);
+                LANShare::getInstance()->mainWindow->sigNewMessage(device, message, false);
             }
         }
         std::mutex &websocket_mutex = StringLockManager::getStringLock("websockets");
@@ -562,7 +561,7 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
     });
 
     httpServer->addPath("/uploadFile", "POST", [](Request *request, Response *response) {
-        QString path = Config::instance().saveFilePath + "网页收到的文件/";
+        QString path = mUtils::joinPath(Config::instance().saveFilePath, "网页收到的文件/");
         QDir file(path);
         if (!file.exists()) {
             mUtils::createMultipleFolders(file.path());
@@ -578,14 +577,17 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
         qDebug() << "upload path: " << uploadResult.getFilePath();
         emit
         LANShareWindow::getInstance()->sigRecviceFile(
-                lfile,
-                lfile->getUuid(),
-                uploadResult.getFileName(),
-                "网页设备",
-                fileSize,
-                true,
-                !lfile->isDirectory(),
-                true
+            lfile,
+            lfile->getUuid(),
+            uploadResult.getFileName(),
+            "网页设备",
+            fileSize,
+            true,
+            !lfile->isDirectory(),
+            true
+        );
+        LANShareWindow::getInstance()->sigRecviceFileSuccess(
+            lfile->getUuid(), true, uploadResult.getFilePath()
         );
         response->writeString(QString("文件上传成功，大小: ") + Utils::computeSize(fileSize).c_str());
     });
@@ -611,7 +613,7 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
             selectFiles.push_back(file);
             LANShare::getInstance()->legacyFileTransfer.sendFile(device, selectFiles, 1);
             response->writeString(
-                    QString("文件上传成功，大小: ") + Utils::computeSize(uploadInputStream.getFileSize()).c_str());
+                QString("文件上传成功，大小: ") + Utils::computeSize(uploadInputStream.getFileSize()).c_str());
             return;
         }
         response->write500("文件上传失败");
@@ -622,7 +624,7 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
         QJsonDocument doc = QJsonDocument::fromJson(str.toUtf8());
         QJsonObject object = doc.object();
         int folderIndex = object["folderIndex"].toInt();
-//        qDebug() << "folderIndex  " << folderIndex;
+        //        qDebug() << "folderIndex  " << folderIndex;
         QJsonArray jsonArray;
         if (folderIndex == -1) {
             for (auto iter = mediaFolders.begin(); iter != mediaFolders.end(); ++iter) {

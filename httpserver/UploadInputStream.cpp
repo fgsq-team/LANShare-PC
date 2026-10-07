@@ -4,8 +4,9 @@
 #include <QUuid>
 #include <QDebug>
 
-UploadInputStream::~UploadInputStream() {
-}
+static const int MAX_HTTP_LINE_LENGTH = 8192;
+
+UploadInputStream::~UploadInputStream() = default;
 
 UploadInputStream::UploadInputStream(TCPClient *is, qint64 contentLength) :
         is(is), fileName(), fileSize(0),
@@ -24,19 +25,21 @@ UploadInputStream::UploadInputStream(TCPClient *is, qint64 contentLength) :
         QString line = QString::fromUtf8(startFlagBytes);
         QString lineUpperCase = line.toUpper();
         if (lineUpperCase.startsWith("CONTENT-DISPOSITION")) {
-            try {
-                filename = line.mid(lineUpperCase.indexOf("FILENAME=\"") + 10);
-                filename = filename.mid(0, filename.indexOf("\""));
-            } catch (const std::exception &e) {
-                qDebug() << "Error: " << e.what();
+            int filenameIdx = lineUpperCase.indexOf("FILENAME=\"");
+            if (filenameIdx != -1) {
+                filename = line.mid(filenameIdx + 10);
+                int endQuoteIdx = filename.indexOf("\"");
+                if (endQuoteIdx != -1) {
+                    filename = filename.mid(0, endQuoteIdx);
+                }
             }
         }
         if (lineUpperCase.startsWith("CONTENT-TYPE")) {
-            if (filename.isNull()) {
+            if (filename.isEmpty()) {
                 filename = QUuid::createUuid().toString();
             }
             this->fileName = filename;
-            is->skip(2); // \r\n
+            is->skip(2); // \r\n 空行分隔
             readHeadLength += 2;
             fileSize = contentLength - (firstLineLength + readHeadLength);
             ready = true;
@@ -50,11 +53,11 @@ UploadInputStream::UploadInputStream(TCPClient *is, qint64 contentLength) :
 
 int UploadInputStream::read(void *data, int maxlen) {
     if (readSize >= fileSize) {
-        return -1;
+        return 0;
     }
     qint64 remainingSize = fileSize - readSize;
     int bytesRead = is->recv(data, (int) qMin((qint64) maxlen, remainingSize));
-    if (bytesRead != -1) {
+    if (bytesRead > 0) {
         readSize += bytesRead;
     }
     return bytesRead;
@@ -86,14 +89,20 @@ mlong UploadInputStream::getSeek() {
 
 QByteArray UploadInputStream::readHttpLineByte(TCPClient *is) {
     QByteArray byteArray;
-    while (true) {
+    while (byteArray.length() < MAX_HTTP_LINE_LENGTH) {
         char c;
-        if ((c = is->read()) == -1) {
+        int r = is->read();
+        if (r == -1) {
             return {};
         }
+        c = static_cast<char>(r);
         byteArray.append(c);
         if (c == '\r') {
-            c = is->read();
+            r = is->read();
+            if (r == -1) {
+                return {};
+            }
+            c = static_cast<char>(r);
             byteArray.append(c);
             if (c == '\n') {
                 break;

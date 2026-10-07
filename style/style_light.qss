@@ -242,9 +242,22 @@ ChatBubbleLeft {
 }
 
 ChatBubbleRight {
-    background-color: #E8F0FE; /* 主色亮 */
-    border: 1px solid #E8F0FE;
+    background-color: #5B8DEF; /* 主色 - MD3 蓝 */
+    border: 1px solid #5B8DEF;
     border-radius: 8px;
+}
+
+/* 聊天气泡文字 - 左右独立控制 */
+QTextBrowser#chatTextLeft {
+    color: #1A1C1E;
+    selection-background-color: #E8F0FE; /* 主色亮 */
+    selection-color: #1A1C1E;
+}
+
+QTextBrowser#chatTextRight {
+    color: #FFFFFF;
+    selection-background-color: rgba(255, 255, 255, 60);
+    selection-color: #FFFFFF;
 }
 
 /* 菜单 */

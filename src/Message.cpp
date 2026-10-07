@@ -38,17 +38,20 @@ void Message::initView() {
     m_avatarLabel->setFixedSize(40, 40);
     m_nicknameLabel = new QLabel(userName, this);
 //    m_nicknameLabel->setStyleSheet("font-weight: bold;");
+    if (!left) {
+        m_nicknameLabel->setStyleSheet("color: #FFFFFF;");
+    }
     m_textLabel = new CustomTextBrowser(this);
+    m_textLabel->setObjectName(left ? "chatTextLeft" : "chatTextRight");
     m_textLabel->setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
     m_textLabel->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_textLabel->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_textLabel->setText(message);
     m_textLabel->document()->adjustSize();
-    // 设置气泡背景颜色和边框
+    // 设置气泡背景颜色（selection 颜色和文字颜色由 QSS 控制）
     QString bubbleStyle = QString(
-            "QTextBrowser { selection-background-color: %1; selection-color: %2;background-color: %3; border-radius: 10px; padding: 10px;border: none;}")
-            .arg(Config::instance().selectionBgColor.name(), Config::instance().selectionTextColor.name(),
-                 left
+            "QTextBrowser { background-color: %1; border-radius: 10px; padding: 10px; border: none;}")
+            .arg(left
                  ? Config::instance().chatBubblColorLeft.color().name()
                  : Config::instance().chatBubblColorRight.color().name());
     m_textLabel->setStyleSheet(bubbleStyle);
@@ -144,13 +147,14 @@ void Message::setDevMode(int devMode) {
 
 void Message::changeEvent(QEvent *event) {
     if (event->type() == QEvent::StyleChange) {
+        // 仅更新动态背景色，selection 颜色和文字颜色由 QSS 控制
         QString bubbleStyle = QString(
-                "QTextBrowser { selection-background-color: %1; selection-color: %2;background-color: %3; border-radius: 10px; padding: 10px;border: none;}")
-                .arg(Config::instance().selectionBgColor.name(), Config::instance().selectionTextColor.name(),
-                     left
+                "QTextBrowser { background-color: %1; border-radius: 10px; padding: 10px; border: none;}")
+                .arg(left
                      ? Config::instance().chatBubblColorLeft.color().name()
                      : Config::instance().chatBubblColorRight.color().name());
         m_textLabel->setStyleSheet(bubbleStyle);
+        m_nicknameLabel->setStyleSheet(!left ? "color: #FFFFFF;" : "");
     }
     QWidget::changeEvent(event);
 }

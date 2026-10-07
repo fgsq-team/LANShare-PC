@@ -92,7 +92,7 @@ void DeviceManager::udpSend(UDPClient *udpClient, DataEnc *dataEnc, const QStrin
  */
 void DeviceManager::scannDevice() {
     mbyte buffer[2048];
-    while (lanshare->isRun) {
+    while (lanshare->isRunning) {
         lanshare->updateMDevices();
         std::vector<Device> devices = lanshare->getMDevices();
         std::vector<Device>::iterator p1;

@@ -248,6 +248,19 @@ ChatBubbleRight {
     border-radius: 8px;
 }
 
+/* 聊天气泡文字 - 左右独立控制 */
+QTextBrowser#chatTextLeft {
+    color: #1A1C1E;
+    selection-background-color: #E8F5E9; /* 主色亮 */
+    selection-color: #1A1C1E;
+}
+
+QTextBrowser#chatTextRight {
+    color: #FFFFFF;
+    selection-background-color: rgba(255, 255, 255, 60);
+    selection-color: #FFFFFF;
+}
+
 /* 菜单 */
 QMenu {
     background-color: #FFFFFF;

@@ -39,8 +39,8 @@
         <file>web/js/bootstrap.min.js</file>
         <file>web/js/bootstrap-notify.min.js</file>
         <file>web/js/jquery.min.js</file>
-        <file>web/js/lanshare.min.js</file>
-        <file>web/js/lanshareChat.min.js</file>
+        <file>web/js/lanshare.js</file>
+        <file>web/js/lanshareChat.js</file>
         <file>web/js/lightyear.min.js</file>
         <file>web/js/main.min.js</file>
         <file>web/js/perfect-scrollbar.min.js</file>
@@ -59,7 +59,7 @@
         <file>web/images/no_network.png</file>
         <file>web/css/animate.min.css</file>
         <file>web/css/bootstrap.min.css</file>
-        <file>web/css/lanshare.min.css</file>
+        <file>web/css/lanshare.css</file>
         <file>web/css/style.min.css</file>
         <file>web/css/theme.css</file>
         <file>web/drawable/ic_phone.png</file>

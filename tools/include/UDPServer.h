@@ -17,7 +17,7 @@
  */
 class UDPServer {
 private:
-    mFd udp_fd;                    // Socket 文件描述符
+    mFd udp_fd = -1;               // Socket 文件描述符
     int port;                      // 监听端口
     int addr_len = sizeof(sockaddr_in);  // 地址结构长度
 public:
@@ -91,10 +91,10 @@ public:
     int recvo(sockaddr_in *src_addr, void *buff, size_t len, int flag = 0);
 
     /**
-     * 关闭 Socket
+     * 关闭 Socket（幂等，可安全重复调用）
      * @return 关闭结果
      */
-    int close() const;
+    int close();
 };
 
 

@@ -66,7 +66,7 @@
 #define DEFAULT_FILE_PATH  QDir::homePath()  + "/LANShare/"
 #endif
 
-#define DEFAULT_USER_NAME QStandardPaths::writableLocation(QStandardPaths::HomeLocation)
+#define DEFAULT_USER_NAME QDir::home().dirName()
 #define DEFAULT_MESSAGE_KEY "e4be1373272c69e0932651d97187b746c6725b17bbe84ad0b0fe2d4e81fc1d6c0c633d8ebd7f0fea65a57a9d5529d214"
 #define KEY "6c9b%8ErII@Rc&f"
 
@@ -123,8 +123,8 @@
 #define DATA_VERSION_2 2
 #define DATA_VERSION_3 3
 #define DATA_VERSION_4 4
-#define LANSHARE_VERSION 2501212
-#define LANSHARE_VERSION_NAME "1.3"
+#define LANSHARE_VERSION 2601007
+#define LANSHARE_VERSION_NAME "1.4"
 #define DATA_VERSION DATA_VERSION_4
 #define LANSHARE_SERVER "http://lanshares.com"
 //#define LANSHARE_SERVER "http://127.0.0.1:8881"

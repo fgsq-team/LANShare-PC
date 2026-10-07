@@ -9,6 +9,7 @@
 #include <QJsonObject>
 #include <thread>
 
+#include "ByteArrayIOUtils.h"
 #include "CustomDataStream.h"
 #include "FileServer.h"
 #include "LANShareWindow.h"
@@ -210,14 +211,20 @@ mlong FileSend::sendFileStream(
     FileTransfer *fileTransfer, mlong total, mlong fileSize, LFile *baseFileItem, LFile *fileItem,
     CustomDataStream *dataStream
 ) const {
-    auto *input = new IOUtils(fileItem->getPath(), QFile::ReadOnly);
-    if (!input->isOpen()) {
-        qDebug("file not open");
+    IOInter *ioUtils;
+    if (fileItem->getType() == LFile::BYTEARRAY) {
+        ioUtils = new ByteArrayIOUtils(fileItem->getByteArray());
+    } else if (fileItem->getType() == LFile::FILE) {
+        ioUtils = new IOUtils(fileItem->path, QFile::ReadOnly);
+    } else if (fileItem->getType() == LFile::STREAM) {
+        ioUtils = fileItem->getIoInter();
+    } else {
+        qDebug("发送的文件类型不支持");
         return -1;
     }
     int len;
     mlong subTotal = 0;
-    mlong targetSize = fileItem->getFileSize();
+    mlong targetSize = ioUtils->getFileSize();
     int progress;
     int lastProgress = 0;
     auto *buffer = new mbyte[1024 * 1024]; // 1MB缓冲区
@@ -227,7 +234,7 @@ mlong FileSend::sendFileStream(
                 dataStream->writeInt(NEW_FS_BREAK);
                 break;
             }
-            len = input->read(buffer, 1024 * 1024);
+            len = ioUtils->read(buffer, 1024 * 1024);
             if (len <= 0) {
                 break;
             }
@@ -250,8 +257,8 @@ mlong FileSend::sendFileStream(
         qDebug("send file error");
         return -1;
     }
-    input->close();
-    if (subTotal != fileItem->getFileSize()) {
+    ioUtils->close();
+    if (subTotal != ioUtils->getFileSize()) {
         subTotal = -1;
     }
     delete[] buffer;

@@ -234,7 +234,7 @@ void TcpProtocol::handleTcp(std::unique_ptr<TCPClient> tcpClient) {
  * 循环接受 TCP 连接并分发到线程池处理
  */
 void TcpProtocol::createTcpServer() {
-    while (lanshare->isRun) {
+    while (lanshare->isRunning) {
         std::unique_ptr<TCPClient> tcpClient = lanshare->tcpServer->accept();
         if (tcpClient == nullptr) {
             return;

@@ -33,16 +33,20 @@ void MessageFile::initView() {
 
     m_nicknameLabel = new QLabel(userName, this);
     //    m_nicknameLabel->setStyleSheet("font-weight: bold;");
+    if (!left) {
+        m_nicknameLabel->setStyleSheet("color: #FFFFFF;");
+    }
 
     m_textLabel = new CustomTextBrowser(this);
+    m_textLabel->setObjectName(left ? "chatTextLeft" : "chatTextRight");
     m_textLabel->setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
     m_textLabel->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_textLabel->setMinimumWidth(150);
     m_textLabel->setMaximumWidth((int) (width() * 0.8));
     m_textLabel->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    // selection 颜色和文字颜色由 QSS 控制
     m_textLabel->setStyleSheet(
-        QString("QTextBrowser { selection-background-color: %1; selection-color: %2;background: rgba(0, 0, 0, 0);border: none;}")
-            .arg(Config::instance().selectionBgColor.name(), Config::instance().selectionTextColor.name()));
+        "QTextBrowser { background: rgba(0, 0, 0, 0); border: none; }");
     m_textLabel->setContentsMargins(0, 0, 0, 0);
     m_textLabel->setText(message);
     m_textLabel->document()->adjustSize();
@@ -50,8 +54,8 @@ void MessageFile::initView() {
     // 初始化文件消息相关控件
     m_fileIconLabel = new QLabel(this);
     m_fileSizeLabel = new QLabel(this);
-    m_fileSizeLabel->setStyleSheet(QString("color:%1;").arg(Config::instance().textColor.name()));
     m_fileSizeLabel->setContentsMargins(4, 0, 0, 0);
+    m_fileSizeLabel->setStyleSheet(QString("color:%1;").arg(!left ? "#B0B6BF" : Config::instance().textColor.name()));
     QPixmap fileIcon;
     if (isFile()) {
         fileIcon = loadSvgPixmap(":/img/svgs/rc_file_icon_file.svg", 60);
@@ -65,7 +69,7 @@ void MessageFile::initView() {
 
     m_statusLabel = new QLabel(this);
     m_statusLabel->setContentsMargins(4, 8, 0, 0);
-    m_statusLabel->setStyleSheet(QString("color:%1;").arg(Config::instance().textColor.name()));
+    m_statusLabel->setStyleSheet(QString("color:%1;").arg(!left ? "#FFFFFF" : Config::instance().textColor.name()));
     m_statusLabel->setText("");
     QFont font = m_statusLabel->font();
     font.setPointSize(8);
@@ -220,7 +224,7 @@ bool MessageFile::isCompleted() const {
 void MessageFile::setCompleted(bool completed) {
     MessageFile::completed = completed;
     if (completed) {
-        if (FileUtils::exists(filePath)) {
+        if (!isLeft() || FileUtils::exists(filePath)) {
             m_statusLabel->setText(left ? tr("接收成功") : tr("发送成功"));
             m_statusLabel->setStyleSheet(QString("QLabel { color : %1; }").arg(Config::instance().successColor.name()));
         } else {
@@ -247,17 +251,20 @@ void MessageFile::changeEvent(QEvent *event) {
         updateFileIcon();
         // 主题切换时更新文件大小和状态标签颜色
         if (m_fileSizeLabel) {
-            m_fileSizeLabel->setStyleSheet(QString("color:%1;").arg(Config::instance().textColor.name()));
+            m_fileSizeLabel->setStyleSheet(QString("color:%1;").arg(!left ? "#B0B6BF" : Config::instance().textColor.name()));
         }
         if (m_statusLabel) {
             if (completed) {
-                if (FileUtils::exists(filePath)) {
-                    m_statusLabel->setStyleSheet(QString("QLabel { color : %1; }").arg(Config::instance().successColor.name()));
+                if (!isLeft() || FileUtils::exists(filePath)) {
+                    m_statusLabel->setStyleSheet(
+                        QString("QLabel { color : %1; }").arg(Config::instance().successColor.name()));
                 } else {
-                    m_statusLabel->setStyleSheet(QString("QLabel { color : %1; }").arg(Config::instance().errorColor.name()));
+                    m_statusLabel->setStyleSheet(
+                        QString("QLabel { color : %1; }").arg(Config::instance().errorColor.name()));
                 }
             } else if (!completed) {
-                m_statusLabel->setStyleSheet(QString("QLabel { color : %1; }").arg(Config::instance().errorColor.name()));
+                m_statusLabel->setStyleSheet(
+                    QString("QLabel { color : %1; }").arg(Config::instance().errorColor.name()));
             } else {
                 m_statusLabel->setStyleSheet(QString("color:%1;").arg(Config::instance().textColor.name()));
             }
@@ -294,7 +301,6 @@ QPixmap MessageFile::loadSvgPixmap(const QString &path, int size) const {
         svgContent.replace("__BG__", "#FFFFFF");
         svgContent.replace("__ICON__", primaryColor.name());
     }
-
     QSvgRenderer renderer(svgContent.toUtf8());
     QPixmap pixmap(size, size);
     pixmap.fill(Qt::transparent);

@@ -52,10 +52,10 @@ public:
     mFd acceptFd();
 
     /**
-     * 关闭服务器
+     * 关闭服务器（幂等，可安全重复调用）
      * @return 关闭结果
      */
-    int close() const;
+    int close();
 };
 
 

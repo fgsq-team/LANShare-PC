@@ -30,7 +30,7 @@ void UdpProtocol::handleUdp() {
     auto *buffer = new mbyte[4096];
     sockaddr_in clientAddr{};
 flag:
-    while (lanshare->isRun) {
+    while (lanshare->isRunning) {
         int len = lanshare->udpServer->recv(&clientAddr, buffer, 4096);
         if (len <= 0) {
             qDebug("runRecive recv len is <= 0");

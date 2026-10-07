@@ -127,13 +127,17 @@ int UDPServer::recvo(CLIENT_ADDR *src_addr, void *buff, size_t len, int flag) {
 }
 
 
-/** 关闭 Socket */
-int UDPServer::close() const {
+/** 关闭 Socket（幂等，可安全重复调用） */
+int UDPServer::close() {
+    if (udp_fd != -1) {
 #if defined(PLATFORM_WINDOWS)
-    return ::closesocket(udp_fd);
+        ::closesocket(udp_fd);
 #elif defined(PLATFORM_ANDROID) || defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS)
-    return ::close(udp_fd);
+        ::close(udp_fd);
 #endif
+        udp_fd = -1;
+    }
+    return 0;
 }
 
 
