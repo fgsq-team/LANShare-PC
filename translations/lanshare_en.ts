@@ -331,6 +331,36 @@
         <source>支付宝</source>
         <translation>Alipay</translation>
     </message>
+    <message>
+        <location filename="../src/about.ui" line="392"/>
+        <source>&lt;a href="http://lanshares.com"&gt;官网&lt;/a&gt;</source>
+        <translation>&lt;a href="http://lanshares.com"&gt;Official Website&lt;/a&gt;</translation>
+    </message>
+    <message>
+        <location filename="../src/about.ui" line="409"/>
+        <source>&lt;a href="https://qm.qq.com/cgi-bin/qm/qr?k=J1R2CxT5897sZbGKAkpFB1HhDSkJl_Me&amp;jump_from=webapi&amp;authKey=+Z8FGpnK5z+NTeAIVrtvki9vgQ58VO07bHtDpo6ahWG9Wu4WqY7m2mae516k3HIH"&gt;QQ群&lt;/a&gt;</source>
+        <translation>&lt;a href="https://qm.qq.com/cgi-bin/qm/qr?k=J1R2CxT5897sZbGKAkpFB1HhDSkJl_Me&amp;jump_from=webapi&amp;authKey=+Z8FGpnK5z+NTeAIVrtvki9vgQ58VO07bHtDpo6ahWG9Wu4WqY7m2mae516k3HIH"&gt;QQ Group&lt;/a&gt;</translation>
+    </message>
+    <message>
+        <location filename="../src/about.ui" line="426"/>
+        <source>&lt;a href="https://github.com/fgsq-team/LANShare"&gt;GitHub&lt;/a&gt;</source>
+        <translation>&lt;a href="https://github.com/fgsq-team/LANShare"&gt;GitHub&lt;/a&gt;</translation>
+    </message>
+    <message>
+        <location filename="../src/about.ui" line="443"/>
+        <source>&lt;a href="checkupdate"&gt;检查更新&lt;/a&gt;</source>
+        <translation>&lt;a href="checkupdate"&gt;Check for Updates&lt;/a&gt;</translation>
+    </message>
+    <message>
+        <location filename="../src/about.ui" line="138"/>
+        <source>Copyright © 2021-2025 By FGSQ</source>
+        <translation>Copyright © 2021-2025 By FGSQ</translation>
+    </message>
+    <message>
+        <location filename="../src/about.ui" line="183"/>
+        <source>All Rights Reserved</source>
+        <translation>All Rights Reserved</translation>
+    </message>
 </context>
 <context>
     <name>DeviceSelecter</name>

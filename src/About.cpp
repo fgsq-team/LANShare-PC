@@ -1,12 +1,13 @@
 #include "About.h"
 #include "ui_about.h"
 #include "Config.hpp"
+#include "UpdateChecker.h"
 
 About::About(QWidget *parent) : QWidget(parent),
                                 ui(new Ui::About) {
     ui->setupUi(this);
     setWindowTitle("关于");
-    setFixedSize(384, 320);
+    setFixedSize(384, 350);
     setWindowFlags(Qt::Dialog | Qt::WindowCloseButtonHint);
     setWindowModality(Qt::ApplicationModal);
 
@@ -22,6 +23,11 @@ About::About(QWidget *parent) : QWidget(parent),
 
     // 设置捐赠标签样式
     ui->donateLabel->setStyleSheet("QLabel { color : #FF5722; font-weight: bold; }");
+
+    // 检查更新：手动触发一次检测
+    connect(ui->labelCheckUpdate, &QLabel::linkActivated, this, [this](const QString &) {
+        UpdateChecker::check(this, true);
+    });
 }
 
 About::~About() {

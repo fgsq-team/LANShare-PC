@@ -23,6 +23,8 @@ else ()
 endif ()
 
 if (WIN32)
+    #    MinGW 默认 _WIN32_WINNT 过低，会导致 ws2tcpip.h 不声明 inet_ntop 等 Vista+ API
+    add_compile_definitions(_WIN32_WINNT=0x0600)
     set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
     if(USE_QT6)
         set(CMAKE_PREFIX_PATH C:/Qt/6.12.0/mingw_64)

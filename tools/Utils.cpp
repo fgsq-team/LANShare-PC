@@ -17,7 +17,6 @@
 #elif defined(PLATFORM_ANDROID) || defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS)
 #endif
 
-#include <charconv>
 #include <iostream>
 #include <cmath>
 #include <string>
@@ -278,9 +277,18 @@ LString Utils::urlDecode(const LString &input) {
         if (input[i] == '%') {
             if (i + 2 < input.getLength()) {
                 // 解析十六进制编码
-                int hexValue;
-                if (std::from_chars(input.getCString() + i + 1, input.getCString() + i + 3, hexValue, 16).ptr ==
-                    input.getCString() + i + 3) {
+                char hi = input[i + 1];
+                char lo = input[i + 2];
+                auto hexVal = [](char c) -> int {
+                    if (c >= '0' && c <= '9') return c - '0';
+                    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+                    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+                    return -1;
+                };
+                int hiValue = hexVal(hi);
+                int loValue = hexVal(lo);
+                if (hiValue != -1 && loValue != -1) {
+                    int hexValue = hiValue * 16 + loValue;
                     decoded += static_cast<char>(hexValue);
                     i += 2;
                 } else {

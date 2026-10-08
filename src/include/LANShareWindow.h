@@ -151,8 +151,6 @@ public slots:
 
     void on_webService_clicked();
 
-    void checkVersionCallback(QNetworkReply *reply);
-
     void loadDeviceList();
 
     void onScroll(int value);
@@ -165,8 +163,6 @@ public:
     void createTrayIcon();
 
     void closeTrayIcon();
-
-    void checkVersion();
 
     void loadData();
 
@@ -183,7 +179,6 @@ private:
     std::vector<Device> devices;
     Device currentDevice;
     QSystemTrayIcon *trayIcon = nullptr;
-    QNetworkAccessManager *networkAccessManager = nullptr;
     SmoothScrollHandler *smoothScrollHandler = nullptr;
     int pageSize = 10;
     int pageCount = 0;

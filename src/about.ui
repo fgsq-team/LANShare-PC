@@ -363,6 +363,102 @@
     </item>
    </layout>
   </widget>
+  <widget class="QWidget" name="horizontalLayoutWidget_links">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>312</y>
+     <width>391</width>
+     <height>26</height>
+    </rect>
+   </property>
+   <layout class="QHBoxLayout" name="horizontalLayout_links">
+    <item>
+     <spacer name="horizontalSpacer_links_1">
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+      <property name="sizeHint" stdset="0">
+       <size>
+        <width>40</width>
+        <height>20</height>
+       </size>
+      </property>
+     </spacer>
+    </item>
+    <item>
+     <widget class="QLabel" name="labelWebsite">
+      <property name="text">
+       <string>&lt;a href="http://lanshares.com"&gt;官网&lt;/a&gt;</string>
+      </property>
+      <property name="openExternalLinks">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="linkSep1">
+      <property name="text">
+       <string> | </string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="labelQQGroup">
+      <property name="text">
+       <string>&lt;a href="https://qm.qq.com/cgi-bin/qm/qr?k=J1R2CxT5897sZbGKAkpFB1HhDSkJl_Me&amp;jump_from=webapi&amp;authKey=+Z8FGpnK5z+NTeAIVrtvki9vgQ58VO07bHtDpo6ahWG9Wu4WqY7m2mae516k3HIH"&gt;QQ群&lt;/a&gt;</string>
+      </property>
+      <property name="openExternalLinks">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="linkSep2">
+      <property name="text">
+       <string> | </string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="labelGithub">
+      <property name="text">
+       <string>&lt;a href="https://github.com/fgsq-team/LANShare"&gt;GitHub&lt;/a&gt;</string>
+      </property>
+      <property name="openExternalLinks">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="linkSep3">
+      <property name="text">
+       <string> | </string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="labelCheckUpdate">
+      <property name="text">
+       <string>&lt;a href="checkupdate"&gt;检查更新&lt;/a&gt;</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <spacer name="horizontalSpacer_links_2">
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+      <property name="sizeHint" stdset="0">
+       <size>
+        <width>40</width>
+        <height>20</height>
+       </size>
+      </property>
+     </spacer>
+    </item>
+   </layout>
+  </widget>
  </widget>
  <resources>
   <include location="../res.qrc"/>

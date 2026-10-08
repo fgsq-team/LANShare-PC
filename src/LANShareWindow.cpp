@@ -29,6 +29,7 @@
 #include "EditTextEventFilter.h"
 #include "LANShare.h"
 #include "FileUtils.h"
+#include "UpdateChecker.h"
 
 LANShareWindow *lanShareWindow = nullptr;
 
@@ -46,8 +47,7 @@ void LANShareWindow::showDeviceSelecter(std::vector<LFile *> &fileaPaths) {
 LANShareWindow::LANShareWindow(QWidget *parent) : QMainWindow(parent),
                                                   ui(new Ui::LANShareWindow) {
     lanShareWindow = this;
-    networkAccessManager = new QNetworkAccessManager();
-    checkVersion();
+    UpdateChecker::check(this, false);
     ui->setupUi(this);
     ui->chatListWidget->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     ui->chatListWidget->setSelectionMode(QAbstractItemView::NoSelection);
@@ -787,69 +787,6 @@ void LANShareWindow::createTrayIcon() {
     trayIcon->show();
     //    trayIcon->showMessage("Notification Title", "This is the notification message.", QSystemTrayIcon::Information,
     //                          3000);
-}
-
-void LANShareWindow::checkVersion() {
-    QNetworkRequest request(QUrl(
-        QString(LANSHARE_SERVER)
-        + "/get_version"
-        + "?type=" + APP_TYPE
-        + "&versionCode=" + QString::number(LANSHARE_VERSION)
-        + "&versionName=" + LANSHARE_VERSION_NAME
-    ));
-    connect(networkAccessManager, &QNetworkAccessManager::finished, this, &LANShareWindow::checkVersionCallback);
-    networkAccessManager->get(request);
-}
-
-void LANShareWindow::checkVersionCallback(QNetworkReply *reply) {
-    // 检查请求是否成功
-    if (reply->error() == QNetworkReply::NoError) {
-        // 读取响应数据
-        QByteArray responseData = reply->readAll();
-        QJsonDocument doc = QJsonDocument::fromJson(responseData);
-        QJsonObject object = doc.object();
-        int versionCode = object["versionCode"].toInt();
-        bool isForceUpdate = object["isForceUpdate"].toBool();
-        int forceUpdateMinVersion = object["forceUpdateMinVersion"].toInt();
-        QString versionName = object["version"].toString();
-        QString fileUrl = object["fileUrl"].toString();
-        QString updateContent = object["updateContent"].toString();
-        QSettings *settings = Config::instance().getSettings();
-        int forceVersion = settings->value(FORCE_VERSION, -1).toInt();
-        isForceUpdate = isForceUpdate && LANSHARE_VERSION < forceUpdateMinVersion;
-        if (versionCode > LANSHARE_VERSION
-            && versionCode > forceVersion
-            || isForceUpdate) {
-            QMessageBox msgBox(this);
-            msgBox.setText(updateContent);
-            msgBox.setWindowTitle("有新版本更新: " + versionName);
-            msgBox.setWindowIcon(QIcon(":/img/ic_launcher.png"));
-            msgBox.setStandardButtons(QMessageBox::No | QMessageBox::Yes);
-            msgBox.setDefaultButton(QMessageBox::No);
-            msgBox.setButtonText(QMessageBox::No, isForceUpdate ? "退出" : "不更新");
-            msgBox.setButtonText(QMessageBox::Yes, "打开下载链接");
-            // 显示消息框，并获取用户的选择
-            int ret = msgBox.exec();
-            // 根据用户的选择进行相应的操作
-            if (ret == QMessageBox::Yes) {
-                if (!fileUrl.startsWith("http://")) {
-                    fileUrl = LANSHARE_SERVER + fileUrl;
-                }
-                QDesktopServices::openUrl(fileUrl);
-            } else {
-                if (isForceUpdate) {
-                    QApplication::quit();
-                    return;
-                }
-                settings->setValue(FORCE_VERSION, versionCode);
-            }
-        }
-    } else {
-        // 请求失败，输出错误信息
-        qDebug() << "Error:" << reply->errorString();
-    }
-    // 释放资源
-    reply->deleteLater();
 }
 
 void LANShareWindow::loadData() {
