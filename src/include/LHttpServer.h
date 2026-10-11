@@ -54,6 +54,13 @@ public:
     /** 向所有 WebSocket 客户端推送主题变更通知 */
     static void sendTheme();
 
+    /**
+     * 强制关闭所有存活的 WebSocket 连接
+     * 退出时调用：/wss 处理线程阻塞在 readFrame 且不受 isRunning 控制，
+     * 若不主动关闭其 socket，ThreadPool 析构 join 会永久阻塞导致进程不退出
+     */
+    static void closeAllWebSockets();
+
     /** 析构函数 */
     ~LHttpServer();
 };

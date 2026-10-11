@@ -13,6 +13,7 @@
 #include "zip.h"
 #include "Utils.h"
 #include <QUrl>
+#include <mutex>
 
 #if defined(PLATFORM_WINDOWS)
 #define DEFAULT_WEB_ROOT_FILE_PATH  "/"
@@ -50,6 +51,9 @@ QStringList paths = {
 std::vector<LWebSocketServer *> websockets;
 QMap<int, MediaFolder> mediaFolders;
 QMap<int, QString> allMedias;
+// mediaFolders / allMedias 由后台扫描线程写入、多个 ThreadPool 工作线程读取，
+// QMap 非线程安全，所有读写必须在 media_mutex 保护下进行，否则破坏堆元数据导致延迟 SIGTRAP
+std::mutex media_mutex;
 
 // 递归扫描文件夹下的所有图片文件
 void scanMovies(const QString &folderPath, QMap<QString, QStringList> &cacheMap) {
@@ -91,6 +95,9 @@ void scanImages() {
         }
         int forderIndex = 0;
         int index = 0;
+        // 先在本地容器构建，最后加锁整体替换，避免扫描期间与 HTTP 工作线程并发读写共享容器
+        QMap<int, MediaFolder> newFolders;
+        QMap<int, QString> newAllMedias;
         // 输出结果
         QMapIterator<QString, QStringList> imageMapIterator(cacheMap);
         while (imageMapIterator.hasNext()) {
@@ -101,10 +108,15 @@ void scanImages() {
                 MediaFile mediaFile;
                 mediaFile.mediaPath = media;
                 mediaFile.index = index;
-                allMedias[index++] = media;
+                newAllMedias[index++] = media;
                 mediaFolder.mediaFiles.append(mediaFile);
             }
-            mediaFolders[forderIndex++] = mediaFolder;
+            newFolders[forderIndex++] = mediaFolder;
+        }
+        {
+            std::lock_guard<std::mutex> lock(media_mutex);
+            mediaFolders = newFolders;
+            allMedias = newAllMedias;
         }
     }).detach();
 }
@@ -137,6 +149,20 @@ void LHttpServer::sendTheme() {
             QByteArray jsonString = rdoc.toJson(QJsonDocument::Compact);
             (*it)->sendString(jsonString);
             ++it;
+        }
+    }
+    websocket_mutex.unlock();
+}
+
+void LHttpServer::closeAllWebSockets() {
+    // 关闭每个存活 websocket 的 socket：会让阻塞在 readFrame 的 recv 立即返回，
+    // 对应 /wss 处理线程随即 break 并自行 erase/delete，从而让 ThreadPool 能 join 完成。
+    // 只 close 不 delete，所有权仍归处理线程，避免双重释放。
+    std::mutex &websocket_mutex = StringLockManager::getStringLock("websockets");
+    websocket_mutex.lock();
+    for (auto *ws: websockets) {
+        if (ws != nullptr) {
+            ws->close();
         }
     }
     websocket_mutex.unlock();
@@ -241,19 +267,27 @@ void listDirectory(const QDir &dir, QJsonArray &jsonArray) {
 }
 
 void composeZip(zip_t *zip, int pathPrefix, const QString &path) {
+    if (!zip) {
+        return;
+    }
     QFileInfo info(path);
     if (info.isFile()) {
         QString name1 = path.mid(pathPrefix);
         qDebug() << "name1:" << name1;
-        zip_entry_open(zip, name1.toUtf8().constData()); {
+        if (zip_entry_open(zip, name1.toUtf8().constData()) < 0) {
+            return;
+        }
+        {
             char buf[1024];
-            IOUtils ioUtils(info.absoluteFilePath(), QFile::ReadOnly);
             int ten = 0;
+            IOUtils ioUtils(info.absoluteFilePath(), QFile::ReadOnly);
             while ((ten = ioUtils.read(buf, 1024)) > 0) {
                 zip_entry_write(zip, buf, ten);
             }
             ioUtils.close();
         }
+        // 必须与 zip_entry_open 严格配对：刷新压缩器输出、写中央目录、释放 entry.name，
+        // 缺少 close 会让 zip 写流状态错乱并破坏堆，导致后续 delete 触发延迟 SIGTRAP
         zip_entry_close(zip);
     } else if (info.isDir()) {
         // 列出文件夹下的所有文件
@@ -439,7 +473,7 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
         qDebug() << "webSocketServer size: " << QString::number(websockets.size());
 
         LHttpServer::sendDeviceList();
-        while (!webSocketServer->isClosed()) {
+        while (!webSocketServer->isClosed() && LANShare::getInstance()->isRunning) {
             QByteArray frame = webSocketServer->readFrame();
             if (frame.isEmpty()) {
                 break;
@@ -499,22 +533,44 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
         QJsonArray list = object["list"].toArray();
         QString fileName = Utils::getUUID() + ".zip";
         QString composeZipPath = Config::instance().saveFilePath + CACHE_DIR + "/" + fileName;
-        struct zip_t *zip = zip_open(composeZipPath.toUtf8().constData(), ZIP_DEFAULT_COMPRESSION_LEVEL, 'w');
-        for (auto &&i: list) {
-            QJsonObject data = i.toObject();
-            bool isDirectory = data.value("isDirectory").toBool();
-            int index = data.value("index").toInt();
-            if (isDirectory) {
-                MediaFolder &mediaFolder = mediaFolders[index];
-                for (const auto &mediaFile: mediaFolder.mediaFiles) {
+        // 在锁保护下快照待打包的 (前缀长度, 文件路径)，只读不写共享容器，
+        // 避免与后台扫描线程及其他工作线程并发读写；耗时的 zip IO 放到锁外执行
+        QVector<QPair<int, QString>> entries;
+        {
+            std::lock_guard<std::mutex> lock(media_mutex);
+            for (auto &&i: list) {
+                QJsonObject data = i.toObject();
+                bool isDirectory = data.value("isDirectory").toBool();
+                int index = data.value("index").toInt();
+                if (isDirectory) {
+                    auto it = mediaFolders.constFind(index);
+                    if (it == mediaFolders.constEnd()) {
+                        continue;
+                    }
+                    const MediaFolder &mediaFolder = it.value();
                     QDir dir(mediaFolder.folderPath);
                     dir.cdUp();
-                    composeZip(zip, dir.absolutePath().length() + 1, mediaFile.mediaPath);
+                    const int prefix = dir.absolutePath().length() + 1;
+                    for (const auto &mediaFile: mediaFolder.mediaFiles) {
+                        entries.append(qMakePair(prefix, mediaFile.mediaPath));
+                    }
+                } else {
+                    auto it = allMedias.constFind(index);
+                    if (it == allMedias.constEnd()) {
+                        continue;
+                    }
+                    QFileInfo fileInfo(it.value());
+                    entries.append(qMakePair(fileInfo.dir().absolutePath().length() + 1, fileInfo.absoluteFilePath()));
                 }
-            } else {
-                QFileInfo fileInfo(allMedias[index]);
-                composeZip(zip, fileInfo.dir().absolutePath().length() + 1, fileInfo.absoluteFilePath());
             }
+        }
+        struct zip_t *zip = zip_open(composeZipPath.toUtf8().constData(), ZIP_DEFAULT_COMPRESSION_LEVEL, 'w');
+        if (zip == nullptr) {
+            response->write500("创建压缩包失败");
+            return;
+        }
+        for (const auto &entry: entries) {
+            composeZip(zip, entry.first, entry.second);
         }
         zip_close(zip);
         QJsonObject jsonObject;
@@ -626,12 +682,17 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
         int folderIndex = object["folderIndex"].toInt();
         //        qDebug() << "folderIndex  " << folderIndex;
         QJsonArray jsonArray;
+        // 本 handler 不磁盘 IO，仅读取共享容器，全程加锁并使用只读访问器
+        std::lock_guard<std::mutex> lock(media_mutex);
         if (folderIndex == -1) {
-            for (auto iter = mediaFolders.begin(); iter != mediaFolders.end(); ++iter) {
+            for (auto iter = mediaFolders.constBegin(); iter != mediaFolders.constEnd(); ++iter) {
                 const int index = iter.key();
                 const MediaFolder &folder = iter.value();
                 const QDir dir(folder.folderPath);
                 const QVector<MediaFile> &images = folder.mediaFiles;
+                if (images.isEmpty()) {
+                    continue;
+                }
                 QJsonObject jsonObject;
                 jsonObject["name"] = dir.dirName() + "(" + QString::number(images.size()) + ")";
                 jsonObject["path"] = images[0].mediaPath;
@@ -643,18 +704,21 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
                 jsonArray.append(jsonObject);
             }
         } else {
-            QVector<MediaFile> images = mediaFolders[folderIndex].mediaFiles;
-            for (const MediaFile &image: images) {
-                const QDir dir(image.mediaPath);
-                QJsonObject jsonObject;
-                jsonObject["name"] = dir.dirName();
-                jsonObject["path"] = dir.absolutePath();
-                jsonObject["isDirectory"] = false;
-                jsonObject["count"] = 0;
-                jsonObject["index"] = image.index;
-                jsonObject["imgIndex"] = image.index;
-                jsonObject["isVideo"] = false;
-                jsonArray.append(jsonObject);
+            auto it = mediaFolders.constFind(folderIndex);
+            if (it != mediaFolders.constEnd()) {
+                const QVector<MediaFile> &images = it.value().mediaFiles;
+                for (const MediaFile &image: images) {
+                    const QDir dir(image.mediaPath);
+                    QJsonObject jsonObject;
+                    jsonObject["name"] = dir.dirName();
+                    jsonObject["path"] = dir.absolutePath();
+                    jsonObject["isDirectory"] = false;
+                    jsonObject["count"] = 0;
+                    jsonObject["index"] = image.index;
+                    jsonObject["imgIndex"] = image.index;
+                    jsonObject["isVideo"] = false;
+                    jsonArray.append(jsonObject);
+                }
             }
         }
         QJsonDocument rdoc;
@@ -665,7 +729,15 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
 
     httpServer->addPath("/imageload/*", [](Request *request, Response *response) {
         QString index = request->getPathParam("index");
-        QString path = allMedias[index.toInt()];
+        // 在锁保护下取快照（只读），缩略图磁盘 IO 放到锁外
+        QString path;
+        {
+            std::lock_guard<std::mutex> lock(media_mutex);
+            auto it = allMedias.constFind(index.toInt());
+            if (it != allMedias.constEnd()) {
+                path = it.value();
+            }
+        }
         if (path.isEmpty()) {
             response->write404();
             return;

@@ -6,6 +6,7 @@
 #define EP_IOUTILS_H
 
 #include  <string>
+#include  <memory>
 #include  <QString>
 #include  <QFile>
 #include  "Type.h"
@@ -21,7 +22,7 @@
  */
 class IOUtils : public IOInter {
 private:
-    QFile *file;            // Qt 文件对象
+    std::unique_ptr<QFile> file;  // Qt 文件对象，独占所有权，自动释放
     QString file_path;      // 文件路径
     mlong file_seek = 0;    // 当前读写位置
 public:
@@ -34,6 +35,10 @@ public:
 
     /** 析构函数 */
     ~IOUtils() override;
+
+    // 持有裸资源所有权，禁止拷贝与赋值，防止 double-free
+    IOUtils(const IOUtils &) = delete;
+    IOUtils &operator=(const IOUtils &) = delete;
 
     /**
      * 判断文件是否已打开

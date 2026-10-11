@@ -4,6 +4,7 @@
 #include "TimeTools.h"
 #include "StringLockManager.h"
 #include <vector>
+#include <chrono>
 
 LANShare *instance = nullptr;
 
@@ -87,8 +88,28 @@ void LANShare::close() {
     for (const auto &device: getMDevices()) {
         deviceManager.noticeDeviceOffLineByIp(device.getDevBrotIp());
     }
-    isRunning = false;
+    // 在锁内置位并唤醒所有 waitForStop 中的等待，使后台循环立即退出
+    {
+        std::lock_guard<std::mutex> lk(stopMutex);
+        isRunning = false;
+    }
+    stopCv.notify_all();
+    // 先强制断开所有存活 WebSocket，打断卡在 readFrame 的处理线程，
+    // 否则 ThreadPool 析构 join 会永久阻塞，导致进程无法退出
+    LHttpServer::closeAllWebSockets();
     int result = udpServer->close();
     int result2 = tcpServer->close();
     qDebug() << "LANShare Server is closed" << result << result2;
+}
+
+/**
+ * 可被 close() 立即中断的等待（替代 sleep）
+ * 用条件变量等待，收到停止通知会提前返回，避免退出时干等满一个周期
+ */
+bool LANShare::waitForStop(int ms) {
+    std::unique_lock<std::mutex> lk(stopMutex);
+    stopCv.wait_for(lk, std::chrono::milliseconds(ms), [this] {
+        return !isRunning.load();
+    });
+    return isRunning.load();
 }

@@ -21,6 +21,9 @@
 #include <list>
 #include <vector>
 #include <map>
+#include <atomic>
+#include <mutex>
+#include <condition_variable>
 
 #include "FileSend.h"
 #include "../version/four/include/FileServer.h"
@@ -59,7 +62,11 @@ public:
     std::map<std::string, Device> onLineDevices;
     // 自己设备信息
     std::vector<Device> mDevices;
-    bool isRunning = true;
+    // 运行标志：后台线程循环读取、主线程 close() 写入，用 atomic 避免数据竞争
+    std::atomic<bool> isRunning{true};
+    // 用于让长时间等待（如设备扫描的 sleep）在 close() 时被立即唤醒，避免退出卡顿
+    std::mutex stopMutex;
+    std::condition_variable stopCv;
     std::unique_ptr<UDPServer> udpServer;
     std::unique_ptr<TCPServer> tcpServer;
     LANShareWindow *mainWindow;
@@ -116,6 +123,13 @@ public:
      * 通知其他设备本机下线，关闭服务器
      */
     void close();
+
+    /**
+     * 可被 close() 立即中断的等待（替代 sleep）
+     * @param ms 最长等待毫秒数
+     * @return true 表示仍在运行（可继续循环），false 表示已请求停止（应退出循环）
+     */
+    bool waitForStop(int ms);
 };
 
 #endif //LANSHARE_LANSHARE_H

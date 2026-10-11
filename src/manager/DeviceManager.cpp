@@ -118,7 +118,8 @@ void DeviceManager::scannDevice() {
             }
             lock.unlock();
         }
-        sleep(5);
+        // 可中断等待：正常每 5 秒扫描一次，close() 时立即返回并退出循环，不拖慢退出
+        if (!lanshare->waitForStop(5000)) break;
     }
 }
 

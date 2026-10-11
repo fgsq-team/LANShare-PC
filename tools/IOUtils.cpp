@@ -9,17 +9,18 @@
  * 析构函数，关闭并释放文件
  */
 IOUtils::~IOUtils() {
-    file->close();
-    delete file;
+    if (file && file->isOpen()) {
+        file->close();
+    }
 }
 
 /**
  * 构造函数，打开文件
  */
 IOUtils::IOUtils(const QString &path, QFile::OpenMode flags) {
-    file_path = path;
-    file = new QFile(path);
+    file = std::make_unique<QFile>(path);
     file->open(flags);
+    file_path = path;
 }
 
 /**
