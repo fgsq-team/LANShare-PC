@@ -36,10 +36,6 @@ public:
 
     void handleVersion1(const Device &device, std::unique_ptr<TCPClient> tcpClient);
 
-    void handleMediaSync(const Device &device, CustomDataStream *stream);
-
-    void handleMessage(const Device &device, CustomDataStream *stream);
-
     void startReceiveFile(FileTransfer *fileTransfer, std::vector<LFile *> files,
                           CustomDataStream *stream,
                           boolean encData, boolean isAgree);

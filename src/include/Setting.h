@@ -27,6 +27,7 @@ public slots:
     void on_selectPath_clicked();
     void on_receivceMute_stateChanged(int state);
     void onThemeRadioButtonClicked();
+    void on_resetSettingsBtn_clicked();
 
 signals:
 

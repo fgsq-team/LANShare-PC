@@ -16,6 +16,9 @@ public:
     int type;
     QString groupId;
     std::vector<LFile*> files;
+
+    // 允许 V5 派生对象通过基类指针安全删除
+    virtual ~FileTransfer() = default;
 };
 
 

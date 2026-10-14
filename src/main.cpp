@@ -12,6 +12,7 @@
 #include <QCoreApplication>
 #include <QImageReader>
 #include <cstdio>
+
 void installTranslator();
 
 bool OPEN_DEBUG = true;
@@ -44,18 +45,31 @@ void readSocketData(QLocalSocket *socket, LANShareWindow *w) {
 }
 
 int main(int argc, char *argv[]) {
+    // 启用高 DPI 缩放，修复 Windows 显示缩放（125%/150%）下 2K 屏界面整体模糊、粗糙的问题
+    // 注意：这些属性必须在 QApplication 构造之前设置才会生效
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    // Qt5：需显式开启高 DPI 缩放与高分辨率贴图
+    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+    QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
+#endif
+    // Qt 5.14+ 与 Qt6 均支持：用 PassThrough 保留 125%/150% 等小数缩放比例，
+    // 避免取整到整数倍后被系统再次拉伸而发虚
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+    QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
+    Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
+#endif
     QApplication a(argc, argv);
     Config::instance().init();
     // 初始化翻译管理器
     TranslationManager::instance()->loadLanguageFromSettings();
-    QFont f("幼圆", 9);
-    QApplication::setFont(f);
+    // 应用用户配置的字体
+    Config::instance().applyFont();
     QApplication::setQuitOnLastWindowClosed(false);
     QApplication::addLibraryPath("./plugins");
     QLocalSocket socket;
     socket.connectToServer(serverName);
 
-    if (socket.waitForConnected(1000))//创建失败，说明已经有一个程序运行，
+    if (socket.waitForConnected(1000)) //创建失败，说明已经有一个程序运行，
     {
         auto buff = new mbyte[1024 * 1024 + DataEnc::headerSize()];
         DataEnc dataEnc(buff, 1024 * 1024 + DataEnc::headerSize());

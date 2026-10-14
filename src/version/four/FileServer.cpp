@@ -10,6 +10,7 @@
 #include "LANShareWindow.h"
 #include "LFile.h"
 #include "ProgressCallback.h"
+#include "SyncFeatureHandler.h"
 
 
 // 具体实现
@@ -141,38 +142,14 @@ void FileServer::handleVersion1(const Device &device, std::unique_ptr<TCPClient>
             handleFileTransfer(device, std::move(tcpClient), stream);
             break;
         case FS_MESSAGE: // 接收消息
-            handleMessage(device, stream);
+            SyncFeatureHandler::handleMessage(device, stream);
             break;
         case FS_GET_NO_SYNC_MEDIA: // 媒体同步
-            handleMediaSync(device, stream);
+            SyncFeatureHandler::handleMediaSync(device, stream);
             break;
         default:
             break;
     }
-}
-
-// 暂时不支持媒体同步
-void FileServer::handleMediaSync(const Device &device, CustomDataStream *stream) {
-    stream->close();
-}
-
-void FileServer::handleMessage(const Device &device, CustomDataStream *stream) {
-    bool isClip = stream->readBoolean();
-    QString messageEnc = QString::fromUtf8(stream->readString().c_str());
-    try {
-        const QString message = mUtils::decMessage(messageEnc, Config::instance().messageKey);
-        qDebug() << "devName:" << device.getDevName() << " message:" << message;
-        emit
-        LANShareWindow::getInstance()->sigNewMessage(device, message, true);
-        if (isClip) {
-            emit
-            LANShareWindow::getInstance()->sigCopyText(message);
-        }
-        qDebug("client close");
-    } catch (const std::exception &e) {
-        qDebug() << "message dec error" << e.what();
-    }
-    stream->close();
 }
 
 void FileServer::startReceiveFile(FileTransfer *fileTransfer, std::vector<LFile *> files,

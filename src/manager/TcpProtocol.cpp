@@ -85,7 +85,7 @@ void TcpProtocol::handleTcp(std::unique_ptr<TCPClient> tcpClient) {
     }
     CustomDataStream dataStream(tcpClient.get());
     int cmd = dataStream.readInt();
-    if (cmd == NEW_VERSION_4) {
+    if (cmd == NEW_VERSION_4 || cmd == NEW_VERSION_5) {
         Device device;
         auto deviceString = dataStream.readString();
         QJsonDocument doc = QJsonDocument::fromJson(deviceString.c_str());
@@ -101,7 +101,12 @@ void TcpProtocol::handleTcp(std::unique_ptr<TCPClient> tcpClient) {
         if (device.getDataVersion() < DATA_VERSION_4) {
             device.setDataVersion(DATA_VERSION_4);
         }
-        lanshare->fileServer.handleVersion1(device, std::move(tcpClient));
+        if (cmd == NEW_VERSION_5) {
+            // V5 断点续传：直接分发至独立的 FileServerV5.handleVersion，不经过 V4
+            lanshare->fileServerV5.handleVersion(device, std::move(tcpClient));
+        } else {
+            lanshare->fileServer.handleVersion1(device, std::move(tcpClient));
+        }
     } else {
         if (tcpClient->recvo(buffer + 4, DataEnc::headerSize() - 4) != DataEnc::headerSize() - 4) return;
         DataDec dataDec(buffer, BUFF_SIZE);

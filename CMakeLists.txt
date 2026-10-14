@@ -100,6 +100,8 @@ endif ()
 include_directories(
         "include"
         "src/version/four/include"
+        "src/version/five/include"
+        "src/version/include"
         "src/utils/include"
         "src/include"
         "src/manager/include"
@@ -152,6 +154,13 @@ add_executable(
         src/version/four/FileTransfer.cpp
         src/version/four/include/FileTransfer.h
         src/version/four/include/ProgressCallback.h
+        src/version/five/FileSendV5.cpp
+        src/version/five/include/FileSendV5.h
+        src/version/five/FileServerV5.cpp
+        src/version/five/include/FileServerV5.h
+        src/version/five/ResumeStore.cpp
+        src/version/five/include/ResumeStore.h
+        src/version/five/include/FileTransferV5.h
         src/TranslationManager.cpp
         src/include/TranslationManager.h
         src/utils/include/FileUtils.h

@@ -305,6 +305,10 @@ void LegacyFileTransfer::sendFile(const Device &device, std::vector<LFile *> sel
     for (p1 = mDevices.begin(); p1 != mDevices.end(); ++p1) {
         if (NetWorldUtils::subNet(NetWorldUtils::getMaskMapLength(p1->getDevNetMask()), p1->getDevIp(),
                                   device.getDevIp())) {
+            if (device.getDataVersion() >= DATA_VERSION_5) {
+                lanshare->fileSendV5.send(*p1, device, std::move(client), selectFiles);
+                return;
+            }
             if (device.getDataVersion() >= DATA_VERSION_4) {
                 lanshare->fileSend.send(*p1, device, std::move(client), selectFiles);
                 return;

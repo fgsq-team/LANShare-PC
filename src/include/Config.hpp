@@ -9,7 +9,8 @@
 #include "qaesencryption.h"
 #include <QUuid>
 
-#define NEW_VERSION_4  -2 // 新版本
+#define NEW_VERSION_4  -2 // 新版本（V4）
+#define NEW_VERSION_5  -3 // 新版本（V5 断点续传，独立 handleVersion）
 #define NEW_FS_BREAK  -2 // 新版本
 
 // 局域网通讯命令
@@ -117,15 +118,23 @@
 #define ALLOW_BACKGROUND_RUNNING "allow_background_running"
 #define FORCE_VERSION "force_version"
 #define THEME "theme"
+// 字体家族
+#define FONT_FAMILY "font_family"
+// 字体大小
+#define FONT_SIZE "font_size"
+// 默认字体
+#define DEFAULT_FONT_FAMILY "幼圆"
+#define DEFAULT_FONT_SIZE 9
 
 #define MAGIC_NUM 0x66677371
 #define DATA_VERSION_1 1
 #define DATA_VERSION_2 2
 #define DATA_VERSION_3 3
 #define DATA_VERSION_4 4
+#define DATA_VERSION_5 5
 #define LANSHARE_VERSION 2601008
 #define LANSHARE_VERSION_NAME "1.4"
-#define DATA_VERSION DATA_VERSION_4
+#define DATA_VERSION DATA_VERSION_5
 #define LANSHARE_SERVER "http://lanshares.com"
 //#define LANSHARE_SERVER "http://127.0.0.1:8881"
 #define CACHE_DIR "/.cache"
@@ -162,6 +171,7 @@
 #include <QStandardPaths>
 #include <memory>
 #include <QApplication>
+#include <QFont>
 #include <cstdio>
 
 class Config {
@@ -195,6 +205,10 @@ public:
     QString styleSheet;
     QString themeName;
     QString language = "zh_CN"; // 语言配置选项
+    // 字体家族
+    QString fontFamily = DEFAULT_FONT_FAMILY;
+    // 字体大小
+    int fontSize = DEFAULT_FONT_SIZE;
     QBrush chatBubblColorLeft;
     QBrush chatBubblColorRight;
     QColor selectionBgColor;
@@ -253,6 +267,8 @@ public:
         messageKey = settings->value(MESSAGE_KEY, DEFAULT_MESSAGE_KEY).toString();
         themeName = settings->value(THEME, "").toString();
         language = settings->value("language", "zh_CN").toString();
+        fontFamily = settings->value(FONT_FAMILY, DEFAULT_FONT_FAMILY).toString();
+        fontSize = settings->value(FONT_SIZE, DEFAULT_FONT_SIZE).toInt();
         QAESEncryption encryption(QAESEncryption::AES_256, QAESEncryption::ECB, QAESEncryption::PKCS7);
         messageKey = QString(
                 QAESEncryption::RemovePadding(encryption.decode(QByteArray::fromHex(messageKey.toUtf8()), KEY),
@@ -273,6 +289,14 @@ public:
 
     QSettings *getSettings() const {
         return settings.get();
+    }
+
+    /**
+     * 将当前配置的字体应用到整个应用程序
+     */
+    void applyFont() {
+        QFont f(fontFamily, fontSize);
+        QApplication::setFont(f);
     }
 
     void save() {

@@ -719,8 +719,18 @@ void LANShareWindow::requstRecvFiles(AcceptFiles *acceptFiles) {
     msgBox.setButtonText(QMessageBox::Yes, tr("接收"));
     int ret = msgBox.exec();
     std::thread([ret, acceptFiles]() mutable {
+        // V5 断点续传：路由到 FileServerV5（同意时回传续传偏移量表）
+        if (acceptFiles->resume) {
+            LANShare::getInstance()->fileServerV5.startReceiveFile(
+                acceptFiles->fileTransfer,
+                acceptFiles->files,
+                acceptFiles->stream,
+                acceptFiles->needEncData,
+                ret == QMessageBox::Yes
+            );
+        }
         // 适配旧版本
-        if (acceptFiles->device.getDataVersion() < DATA_VERSION_4) {
+        else if (acceptFiles->device.getDataVersion() < DATA_VERSION_4) {
             LANShare::getInstance()->legacyFileTransfer.startHandleRecvFile(
                 ret == QMessageBox::Yes,
                 acceptFiles->device,

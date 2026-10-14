@@ -15,7 +15,7 @@ Setting::Setting(QWidget *parent) : QWidget(parent),
     ui->setupUi(this);
     setWindowTitle(tr("设置"));
     setWindowFlags(Qt::Window | Qt::WindowCloseButtonHint);
-    setFixedSize(500, 380);
+    setFixedSize(500, 470);
     setWindowModality(Qt::ApplicationModal);
     themeRadio = new QButtonGroup(this);
     themeRadio->addButton(ui->radioButton_auto);
@@ -38,6 +38,12 @@ Setting::Setting(QWidget *parent) : QWidget(parent),
     ui->allowBackgroundRunning->setChecked(Config::instance().allowBackgroundRunning);
     ui->autoStart->setChecked(Config::instance().autoStart);
     ui->messageKey->setPlainText(Config::instance().messageKey);
+
+    // 设置字体选择框
+    ui->fontComboBox->setCurrentFont(QFont(Config::instance().fontFamily));
+    ui->fontSizeSpinBox->setValue(Config::instance().fontSize);
+    // 不可编辑：点击框体任意位置即可弹出下拉（与语言下拉框一致）
+    ui->fontComboBox->setEditable(false);
     
     // 设置语言选择框
     if (Config::instance().language == "zh_CN") {
@@ -99,6 +105,62 @@ void Setting::on_receivceMute_stateChanged(int state) {
     qDebug() << "state:" << state;
 }
 
+/**
+ * 重置基本设置槽函数
+ * 将「基本设置」页所有项（用户名、保存路径、TCP/UDP 端口、消息密钥、语言、字体、字号）
+ * 恢复为默认值，立即应用并持久化
+ */
+void Setting::on_resetSettingsBtn_clicked() {
+    QSettings *settings = Config::instance().getSettings();
+
+    // 用户名
+    Config::instance().clientName = DEFAULT_USER_NAME;
+    ui->userName->setPlainText(Config::instance().clientName);
+    settings->setValue(USER_NAME, Config::instance().clientName);
+
+    // 保存路径
+    Config::instance().saveFilePath = QDir::cleanPath(QString(DEFAULT_FILE_PATH));
+    ui->filePath->setPlainText(Config::instance().saveFilePath);
+    settings->setValue(FILE_PATH, Config::instance().saveFilePath);
+
+    // TCP / UDP 端口
+    Config::instance().tcpPort = DEFAULT_TCPPORT;
+    Config::instance().udpPort = DEFAULT_UDPPORT;
+    ui->tcpPort->setPlainText(QString::number(Config::instance().tcpPort));
+    ui->udpPort->setPlainText(QString::number(Config::instance().udpPort));
+    settings->setValue(TCP_PORT, Config::instance().tcpPort);
+    settings->setValue(UDP_PORT, Config::instance().udpPort);
+
+    // 消息密钥：重置为默认明文（对规范密文 DEFAULT_MESSAGE_KEY 解密得到，与 init 一致），
+    // UI 显示明文，存盘直接写规范密文，避免二次加密
+    {
+        QAESEncryption encryption(QAESEncryption::AES_256, QAESEncryption::ECB, QAESEncryption::PKCS7);
+        Config::instance().messageKey = QString(
+            QAESEncryption::RemovePadding(
+                encryption.decode(QByteArray::fromHex(QByteArray(DEFAULT_MESSAGE_KEY)), KEY),
+                QAESEncryption::PKCS7));
+    }
+    ui->messageKey->setPlainText(Config::instance().messageKey);
+    settings->setValue(MESSAGE_KEY, QString(DEFAULT_MESSAGE_KEY));
+
+    // 语言
+    Config::instance().language = "zh_CN";
+    ui->languageComboBox->setCurrentIndex(0);
+    settings->setValue("language", Config::instance().language);
+    TranslationManager::instance()->setLanguage(Config::instance().language);
+
+    // 字体与字号
+    Config::instance().fontFamily = DEFAULT_FONT_FAMILY;
+    Config::instance().fontSize = DEFAULT_FONT_SIZE;
+    ui->fontComboBox->setCurrentFont(QFont(DEFAULT_FONT_FAMILY));
+    ui->fontSizeSpinBox->setValue(DEFAULT_FONT_SIZE);
+    settings->setValue(FONT_FAMILY, Config::instance().fontFamily);
+    settings->setValue(FONT_SIZE, Config::instance().fontSize);
+    Config::instance().applyFont();
+
+    emit sigUpdateSetting();
+}
+
 void Setting::closeEvent(QCloseEvent *event) {
     QSettings *settings = Config::instance().getSettings();
 
@@ -125,6 +187,13 @@ void Setting::closeEvent(QCloseEvent *event) {
     
     // 应用语言设置
     TranslationManager::instance()->setLanguage(Config::instance().language);
+
+    // 保存并应用字体设置
+    Config::instance().fontFamily = ui->fontComboBox->currentFont().family();
+    Config::instance().fontSize = ui->fontSizeSpinBox->value();
+    settings->setValue(FONT_FAMILY, Config::instance().fontFamily);
+    settings->setValue(FONT_SIZE, Config::instance().fontSize);
+    Config::instance().applyFont();
 
     settings->setValue(USER_NAME, Config::instance().clientName);
     settings->setValue(FILE_PATH, Config::instance().saveFilePath);

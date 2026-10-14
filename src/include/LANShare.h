@@ -27,6 +27,8 @@
 
 #include "FileSend.h"
 #include "../version/four/include/FileServer.h"
+#include "../version/five/include/FileSendV5.h"
+#include "../version/five/include/FileServerV5.h"
 #include "ThreadPool.h"
 #include "DeviceManager.hpp"
 #include "UdpProtocol.hpp"
@@ -48,6 +50,8 @@ public:
     std::unique_ptr<TCPClient> tcpClient;
     FileTransfer *fileTransfer;
     CustomDataStream *stream;
+    // V5 断点续传标志：接收同意回调需路由到 FileServerV5
+    bool resume = false;
 };
 
 /**
@@ -74,6 +78,9 @@ public:
     std::unique_ptr<ThreadPool> tcpThreadPool;
     FileServer fileServer;
     FileSend fileSend;
+    // V5（断点续传）收发器
+    FileServerV5 fileServerV5;
+    FileSendV5 fileSendV5;
     int systemVolume = 0;
     bool muted = false;
 
