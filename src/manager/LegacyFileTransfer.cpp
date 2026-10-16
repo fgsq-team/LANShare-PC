@@ -77,7 +77,7 @@ mlong LegacyFileTransfer::baseSend(LFile *file, LFile *f, mlong size, mlong tota
                 qDebug("progress: %d", progress);
                 p = progress;
                 emit
-                LANShareWindow::getInstance()->sigRecviceFileProgress(f->getUuid(), progress);
+                LANShareWindow::getInstance()->sigReceiveFileProgress(f->getUuid(), progress);
             }
         }
     } catch (LException &e) {
@@ -157,7 +157,7 @@ mlong LegacyFileTransfer::baseSendEnc(LFile *file, LFile *f, mlong size, mlong t
                 qDebug("progress: %d", progress);
                 p = progress;
                 emit
-                LANShareWindow::getInstance()->sigRecviceFileProgress(f->getUuid(), progress);
+                LANShareWindow::getInstance()->sigReceiveFileProgress(f->getUuid(), progress);
             }
         }
         ioUtils->close();
@@ -214,7 +214,7 @@ mlong LegacyFileTransfer::baseRecv(const LFile *mfile, IOUtils &fileIO, DataDec 
                     qDebug("progress:%d", progress);
                     p = progress;
                     emit
-                    LANShareWindow::getInstance()->sigRecviceFileProgress(mfile->getUuid(), progress);
+                    LANShareWindow::getInstance()->sigReceiveFileProgress(mfile->getUuid(), progress);
                 }
                 mbyte send;
                 if (mfile->isNextStep()) {
@@ -267,7 +267,7 @@ mlong LegacyFileTransfer::baseRecvDec(const LFile *mfile, IOUtils &fileIO, DataD
                     qDebug("progress:%d", progress);
                     p = progress;
                     emit
-                    LANShareWindow::getInstance()->sigRecviceFileProgress(mfile->getUuid(), progress);
+                    LANShareWindow::getInstance()->sigReceiveFileProgress(mfile->getUuid(), progress);
                 }
                 mbyte send;
                 if (mfile->isNextStep()) {
@@ -347,7 +347,7 @@ void LegacyFileTransfer::sendFile(const Device &device, std::vector<LFile *> sel
                     dataEnc.putInt((int) file->getFileList().size());
                 }
                 emit
-                lanshare->mainWindow->sigRecviceFile(
+                lanshare->mainWindow->sigReceiveFile(
                     file,
                     file->getUuid(),
                     file->fileName,
@@ -417,10 +417,10 @@ void LegacyFileTransfer::sendFile(const Device &device, std::vector<LFile *> sel
                 qDebug() << "文件大小:" << file->fileSize << "发送文件大小:" << total;
                 if (total != file->fileSize) {
                     emit
-                    LANShareWindow::getInstance()->sigRecviceFileSuccess(file->getUuid(), false, file->getPath());
+                    LANShareWindow::getInstance()->sigReceiveFileSuccess(file->getUuid(), false, file->getPath());
                 } else {
                     emit
-                    LANShareWindow::getInstance()->sigRecviceFileSuccess(file->getUuid(), true, file->getPath());
+                    LANShareWindow::getInstance()->sigReceiveFileSuccess(file->getUuid(), true, file->getPath());
                     lanshare->lhttpServer->sendWebSocketMessage(
                         file->getFileName(),
                         device.getDevName(),
@@ -504,14 +504,14 @@ void LegacyFileTransfer::startHandleRecvFile(
                 if (total != item->fileSize) {
                     qDebug("recv fail");
                     emit
-                    LANShareWindow::getInstance()->sigRecviceFileSuccess(
+                    LANShareWindow::getInstance()->sigReceiveFileSuccess(
                         item->getUuid(), false,
                         Config::instance().saveFilePath + item->getFileName()
                     );
                 } else {
                     qDebug("recv sucess");
                     emit
-                    LANShareWindow::getInstance()->sigRecviceFileSuccess(
+                    LANShareWindow::getInstance()->sigReceiveFileSuccess(
                         item->getUuid(), true,
                         Config::instance().saveFilePath + item->getFileName());
                     LHttpServer::sendWebSocketMessage(
@@ -544,12 +544,12 @@ void LegacyFileTransfer::startHandleRecvFile(
                     fileIO.deleteFile();
                     qDebug("recv fail");
                     emit
-                    LANShareWindow::getInstance()->sigRecviceFileSuccess(item->getUuid(), false,
+                    LANShareWindow::getInstance()->sigReceiveFileSuccess(item->getUuid(), false,
                                                                          fileIO.getFilePath());
                 } else {
                     qDebug("recv sucess");
                     emit
-                    LANShareWindow::getInstance()->sigRecviceFileSuccess(item->getUuid(), true,
+                    LANShareWindow::getInstance()->sigReceiveFileSuccess(item->getUuid(), true,
                                                                          fileIO.getFilePath());
                     const mlong mediaId = item->getMediaId();
                     if (mediaId > -1) {
@@ -580,7 +580,7 @@ void LegacyFileTransfer::startHandleRecvFile(
         for (const LFile *item: files) {
             qDebug("Not agree");
             emit
-            LANShareWindow::getInstance()->sigRecviceFileSuccess(item->getUuid(), false, "");
+            LANShareWindow::getInstance()->sigReceiveFileSuccess(item->getUuid(), false, "");
         }
     }
     delete[] buffer;

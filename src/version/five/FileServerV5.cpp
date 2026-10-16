@@ -30,7 +30,7 @@ public:
         for (auto file: fileTransfer->files) {
             file->setUuid(Utils::getUUID());
             emit
-            LANShareWindow::getInstance()->sigRecviceFile(
+            LANShareWindow::getInstance()->sigReceiveFile(
                 file,
                 file->getUuid(),
                 file->getFileName(),
@@ -44,21 +44,21 @@ public:
     }
 
     void onProgress(FileTransfer *fileTransfer, LFile *fileItem) override {
-        LANShareWindow::getInstance()->sigRecviceFileProgress(fileItem->getUuid(), fileItem->getProgress());
+        LANShareWindow::getInstance()->sigReceiveFileProgress(fileItem->getUuid(), fileItem->getProgress());
     }
 
     void onFinish(FileTransfer *fileTransfer, LFile *fileItem, bool isSuccess) override {
         if (!isSuccess) {
             qDebug("recv fail");
             emit
-            LANShareWindow::getInstance()->sigRecviceFileSuccess(
+            LANShareWindow::getInstance()->sigReceiveFileSuccess(
                 fileItem->getUuid(), false,
                 ""
             );
         } else {
             qDebug("recv sucess");
             emit
-            LANShareWindow::getInstance()->sigRecviceFileSuccess(
+            LANShareWindow::getInstance()->sigReceiveFileSuccess(
                 fileItem->getUuid(), true,
                 fileItem->getPath());
             LHttpServer::sendWebSocketMessage(
@@ -154,7 +154,7 @@ void FileServerV5::handleFileTransfer(const Device &fromDevice, CustomDataStream
         acceptFiles->tcpClient = std::move(tcpClient);
         acceptFiles->resume = true;
         emit
-        LANShareWindow::getInstance()->sigRequstRecvFiles(acceptFiles);
+        LANShareWindow::getInstance()->sigRequestRecvFiles(acceptFiles);
     }
 }
 

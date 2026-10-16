@@ -214,8 +214,13 @@ QListWidget#chatListWidget::item:focus {
     border: none;
 }
 
-/* 聊天气泡容器 - 透明背景让 chatListWidget 背景透出 */
-Message, MessageFile {
+/* 聊天条目容器 - 透明背景让 chatListWidget 背景透出 */
+ChatItemWidget {
+    background-color: transparent;
+}
+
+/* 气泡框架 - 抵消 * 通配符注入的背景，圆角外由 paintEvent 透明露出列表背景 */
+BubbleFrame {
     background-color: transparent;
 }
 

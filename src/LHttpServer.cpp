@@ -632,7 +632,7 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
         lfile->setPath(uploadResult.getFilePath());
         qDebug() << "upload path: " << uploadResult.getFilePath();
         emit
-        LANShareWindow::getInstance()->sigRecviceFile(
+        LANShareWindow::getInstance()->sigReceiveFile(
             lfile,
             lfile->getUuid(),
             uploadResult.getFileName(),
@@ -642,7 +642,7 @@ LHttpServer::LHttpServer(LANShare *lanShare) : lanShare(lanShare) {
             !lfile->isDirectory(),
             true
         );
-        LANShareWindow::getInstance()->sigRecviceFileSuccess(
+        LANShareWindow::getInstance()->sigReceiveFileSuccess(
             lfile->getUuid(), true, uploadResult.getFilePath()
         );
         response->writeString(QString("文件上传成功，大小: ") + Utils::computeSize(fileSize).c_str());

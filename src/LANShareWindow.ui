@@ -127,7 +127,7 @@
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout_2">
           <item>
-           <widget class="QPushButton" name="select_send_devices">
+           <widget class="QPushButton" name="selectSendDevices">
             <property name="font">
              <font>
               <family>Microsoft Yahei</family>
@@ -149,7 +149,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="select_files">
+           <widget class="QPushButton" name="selectFiles">
             <property name="styleSheet">
             </property>
             <property name="text">
@@ -162,7 +162,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="select_directorys">
+           <widget class="QPushButton" name="selectDirectories">
             <property name="minimumSize">
              <size>
               <width>0</width>
@@ -324,9 +324,9 @@
      <property name="title">
       <string>删除消息</string>
      </property>
-     <addaction name="actionclaerAll"/>
-     <addaction name="actionclearMessage"/>
-     <addaction name="actionclearFile"/>
+     <addaction name="actionClearAll"/>
+     <addaction name="actionClearMessage"/>
+     <addaction name="actionClearFile"/>
     </widget>
     <addaction name="setting"/>
     <addaction name="menumessage"/>
@@ -335,7 +335,7 @@
     <property name="title">
      <string>关于</string>
     </property>
-    <addaction name="actionabout"/>
+    <addaction name="actionAbout"/>
    </widget>
    <addaction name="menuSetting"/>
    <addaction name="menu_2"/>
@@ -345,22 +345,22 @@
     <string>设置</string>
    </property>
   </action>
-  <action name="actionclaerAll">
+  <action name="actionClearAll">
    <property name="text">
     <string>删除所有消息</string>
    </property>
   </action>
-  <action name="actionclearMessage">
+  <action name="actionClearMessage">
    <property name="text">
     <string>删除文本消息</string>
    </property>
   </action>
-  <action name="actionclearFile">
+  <action name="actionClearFile">
    <property name="text">
     <string>删除文件消息</string>
    </property>
   </action>
-  <action name="actionabout">
+  <action name="actionAbout">
    <property name="text">
     <string>关于</string>
    </property>

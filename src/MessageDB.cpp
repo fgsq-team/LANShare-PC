@@ -7,12 +7,16 @@
 #include <QSqlError>
 #include <QtMath>
 #include "MessageDB.h"
-#include "MessageFile.h"
 #include "TimeTools.h"
 #include "Config.hpp"
 #include "StringLockManager.h"
 
 #define DB_VERSION 2
+
+// messageType 列取值（与历史数据库保持一致）
+#define MESSAGE_TYPE 1       // 文本
+#define MESSAGE_FILE_TYPE 2  // 文件/文件夹
+#define MESSAGE_IMAGE_TYPE 3 // 图片（缩略图展示，字段与文件消息同构）
 
 MessageDB::MessageDB() {
     if (QSqlDatabase::contains("message")) {
@@ -63,7 +67,7 @@ MessageDB::~MessageDB() {
     delete sql_query;
 }
 
-void MessageDB::updateMessage(Message *message) {
+void MessageDB::updateMessage(const ChatMessage &message) {
     if (!database.isOpen()) {
         return;
     }
@@ -71,7 +75,6 @@ void MessageDB::updateMessage(Message *message) {
             "messageType=:messageType, "
             "deviceName=:deviceName, "
             "dataVersion=:dataVersion, "
-            "toUser=:toUser, "
             "isLeft=:isLeft, "
             "isfile=:isfile, "
             "devMode=:devMode, "
@@ -80,31 +83,34 @@ void MessageDB::updateMessage(Message *message) {
             "recviced=:recviced, "
             "fileSize=:fileSize, "
             "fileSizeStr=:fileSizeStr, "
-            "isVideo=:isVideo, "
             "isdel=:isdel "
             "WHERE id=:id";
     sql_query->prepare(sql);
-    sql_query->bindValue(":message", message->getMessage());
-    sql_query->bindValue(":deviceName", message->getDeviceName());
-    sql_query->bindValue(":dataVersion", message->getDataVersion());
-    sql_query->bindValue(":isLeft", message->isLeft());
-    sql_query->bindValue(":isfile", true);
-    sql_query->bindValue(":devMode", message->getDevMode());
+
+    const ContentElement *file = message.firstOf(ElementType::File);
+    const ContentElement *img = message.firstOf(ElementType::Image);
+    const ContentElement *media = file != nullptr ? file : img;
+
+    sql_query->bindValue(":deviceName", message.deviceName);
+    sql_query->bindValue(":dataVersion", message.dataVersion);
+    sql_query->bindValue(":isLeft", message.direction == ChatDirection::Left);
+    sql_query->bindValue(":devMode", message.devMode);
     sql_query->bindValue(":isdel", false);
-    sql_query->bindValue(":isVideo", false);
-    sql_query->bindValue(":videoTime", "");
-    sql_query->bindValue(":toUser", "");
-    sql_query->bindValue(":id", message->getUuid());
-    if (typeid(*message) == typeid(MessageFile)) {
-        auto *messageFile = (MessageFile *) message;
-        sql_query->bindValue(":messageType", MESSAGE_FILE_TYPE);
-        sql_query->bindValue(":filePath", messageFile->getFilePath());
-        sql_query->bindValue(":completed", messageFile->isCompleted());
-        sql_query->bindValue(":recviced", messageFile->isRecviced());
-        sql_query->bindValue(":fileSize", QVariant::fromValue(messageFile->getFileSize()));
-        sql_query->bindValue(":fileSizeStr", messageFile->getFileSizeStr());
+    sql_query->bindValue(":id", message.uuid);
+
+    if (media != nullptr) {
+        sql_query->bindValue(":messageType", file != nullptr ? MESSAGE_FILE_TYPE : MESSAGE_IMAGE_TYPE);
+        sql_query->bindValue(":message", media->name);
+        sql_query->bindValue(":isfile", !media->isDirectory);
+        sql_query->bindValue(":filePath", media->filePath);
+        sql_query->bindValue(":completed", media->completed);
+        sql_query->bindValue(":recviced", media->received);
+        sql_query->bindValue(":fileSize", QVariant::fromValue(media->size));
+        sql_query->bindValue(":fileSizeStr", media->sizeStr);
     } else {
         sql_query->bindValue(":messageType", MESSAGE_TYPE);
+        sql_query->bindValue(":message", message.displayText());
+        sql_query->bindValue(":isfile", false);
         sql_query->bindValue(":filePath", "");
         sql_query->bindValue(":completed", false);
         sql_query->bindValue(":recviced", false);
@@ -116,17 +122,14 @@ void MessageDB::updateMessage(Message *message) {
     }
 }
 
-
-void MessageDB::addMessage(Message *message) {
+void MessageDB::addMessage(const ChatMessage &message) {
     if (!database.isOpen()) {
         return;
     }
     std::mutex &addMessageLock = StringLockManager::getStringLock("addMessage");
     std::lock_guard<std::mutex> lock(addMessageLock); // 自动锁定 mtx
-    QString uuid = message->getUuid();
-    //    if (uuid == nullptr || uuid.length() <= 0) {
-    //        uuid = Utils::getUUID();
-    //    }
+    const QString &uuid = message.uuid;
+
     // 使用占位符进行插入操作
     sql_query->prepare("INSERT INTO message VALUES("
         ":uuid,"
@@ -150,50 +153,49 @@ void MessageDB::addMessage(Message *message) {
         ":isdel"
         ")"
     );
-    sql_query->bindValue(":dataVersion", message->getDataVersion());
+    sql_query->bindValue(":uuid", uuid);
+    const ContentElement *fileEl = message.firstOf(ElementType::File);
+    const ContentElement *imgEl = message.firstOf(ElementType::Image);
+    const ContentElement *media = fileEl != nullptr ? fileEl : imgEl;
+    sql_query->bindValue(":devName", message.deviceName);
+    sql_query->bindValue(":dataVersion", message.dataVersion);
     sql_query->bindValue(":createTime", TimeTools::getFormatTime().c_str());
     sql_query->bindValue(":timeStamp", TimeTools::getCurrentTime());
     sql_query->bindValue(":isVideo", false);
     sql_query->bindValue(":videoTime", "");
     sql_query->bindValue(":toUser", "");
-    if (typeid(*message) == typeid(MessageFile)) {
-        auto *messageFile = (MessageFile *) message;
-        sql_query->bindValue(":uuid", uuid);
-        sql_query->bindValue(":messageType", MESSAGE_FILE_TYPE);
-        sql_query->bindValue(":message", message->getMessage());
-        sql_query->bindValue(":devName", message->getDeviceName());
-        sql_query->bindValue(":isLeft", message->isLeft());
-        sql_query->bindValue(":isFile", true);
-        sql_query->bindValue(":devMode", message->getDevMode());
-        sql_query->bindValue(":filePath", messageFile->getFilePath());
-        sql_query->bindValue(":completed", messageFile->isCompleted());
-        sql_query->bindValue(":recviced", messageFile->isRecviced());
-        sql_query->bindValue(":fileSize", QVariant::fromValue(messageFile->getFileSize()));
-        sql_query->bindValue(":fileSizeStr", messageFile->getFileSizeStr());
-        sql_query->bindValue(":fileSizeStr", messageFile->getFileSizeStr());
-        sql_query->bindValue(":isdel", false);
+    sql_query->bindValue(":isLeft", message.direction == ChatDirection::Left);
+    sql_query->bindValue(":devMode", message.devMode);
+    sql_query->bindValue(":isdel", false);
+
+    if (media != nullptr) {
+        sql_query->bindValue(":messageType", fileEl != nullptr ? MESSAGE_FILE_TYPE : MESSAGE_IMAGE_TYPE);
+        // 文件/图片消息展示名以明文存储（与历史行为一致）
+        sql_query->bindValue(":message", media->name);
+        sql_query->bindValue(":isFile", !media->isDirectory);
+        sql_query->bindValue(":filePath", media->filePath);
+        sql_query->bindValue(":completed", media->completed);
+        sql_query->bindValue(":recviced", media->received);
+        sql_query->bindValue(":fileSize", QVariant::fromValue(media->size));
+        sql_query->bindValue(":fileSizeStr", media->sizeStr);
     } else {
-        sql_query->bindValue(":uuid", uuid);
         sql_query->bindValue(":messageType", MESSAGE_TYPE);
-        sql_query->bindValue(":message", mUtils::encMessage(message->getMessage(), KEY));
-        sql_query->bindValue(":devName", message->getDeviceName());
-        sql_query->bindValue(":isLeft", message->isLeft());
+        // 文本消息正文加密存储
+        sql_query->bindValue(":message", mUtils::encMessage(message.displayText(), KEY));
         sql_query->bindValue(":isFile", false);
-        sql_query->bindValue(":devMode", message->getDevMode());
         sql_query->bindValue(":filePath", "");
         sql_query->bindValue(":completed", false);
         sql_query->bindValue(":recviced", false);
-        sql_query->bindValue(":fileSize", false);
+        sql_query->bindValue(":fileSize", 0);
         sql_query->bindValue(":fileSizeStr", "");
-        sql_query->bindValue(":isdel", false);
     }
     if (!sql_query->exec()) {
         qDebug() << "Error inserting into table:" << sql_query->lastError();
     }
 }
 
-std::list<Message *> MessageDB::queryList(int pageSize, int pageCount, QWidget *parent) {
-    std::list<Message *> messageList;
+std::list<ChatMessage> MessageDB::queryList(int pageSize, int pageCount) {
+    std::list<ChatMessage> messageList;
     if (!database.isOpen()) {
         return messageList;
     }
@@ -239,20 +241,40 @@ std::list<Message *> MessageDB::queryList(int pageSize, int pageCount, QWidget *
             QString fileSizeStr = sql_query->value(index++).toString();
             QString createTime = sql_query->value(index++).toString();
             mlong timeStamp = sql_query->value(index++).toLongLong();
-            long isdel = sql_query->value(index++).toBool();
-            if (messageType == MESSAGE_FILE_TYPE) {
-                auto *msg = new MessageFile(messageEnc, deviceName, devMode, left, isfile, parent);
-                msg->setFileSize(fileSize);
-                msg->setFileSizeStr(fileSizeStr);
-                msg->setFilePath(filePath);
-                msg->setCompleted(completed);
-                msg->setRecviced(true);
-                msg->setUuid(id);
+            bool isdel = sql_query->value(index++).toBool();
+            Q_UNUSED(toUser);
+            Q_UNUSED(isVideo);
+            Q_UNUSED(videoTime);
+            Q_UNUSED(isdel);
+
+            ChatDirection dir = left ? ChatDirection::Left : ChatDirection::Right;
+            if (messageType == MESSAGE_FILE_TYPE || messageType == MESSAGE_IMAGE_TYPE) {
+                const bool image = messageType == MESSAGE_IMAGE_TYPE;
+                ChatMessage msg = image
+                                      ? ChatMessage::fromImage(QString(), messageEnc, id, deviceName,
+                                                               devMode, dir, fileSize)
+                                      : ChatMessage::fromFile(messageEnc, id, deviceName, devMode, dir,
+                                                              fileSize, !isfile);
+                msg.uuid = id;
+                msg.dataVersion = dataVersion;
+                msg.createTime = createTime;
+                msg.timeStamp = timeStamp;
+                ContentElement *el = msg.firstOf(image ? ElementType::Image : ElementType::File);
+                if (el != nullptr) {
+                    el->filePath = filePath;
+                    el->sizeStr = fileSizeStr;
+                    el->completed = completed;
+                    el->received = recviced || completed;
+                    el->progress = completed ? 100 : 0;
+                }
                 messageList.push_back(msg);
             } else if (messageType == MESSAGE_TYPE) {
-                QString message = mUtils::decMessage(messageEnc, KEY);
-                auto *msg = new Message(message, deviceName, devMode, left, parent);
-                msg->setUuid(id);
+                QString text = mUtils::decMessage(messageEnc, KEY);
+                ChatMessage msg = ChatMessage::fromText(text, deviceName, devMode, dir);
+                msg.uuid = id;
+                msg.dataVersion = dataVersion;
+                msg.createTime = createTime;
+                msg.timeStamp = timeStamp;
                 messageList.push_back(msg);
             }
         }

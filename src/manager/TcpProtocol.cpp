@@ -178,7 +178,7 @@ void TcpProtocol::handleTcp(std::unique_ptr<TCPClient> tcpClient) {
                 lfile->setUuid(Utils::getUUID());
                 files.push_back(lfile);
                 emit
-                LANShareWindow::getInstance()->sigRecviceFile(
+                LANShareWindow::getInstance()->sigReceiveFile(
                     lfile,
                     lfile->getUuid(),
                     strFilename,
@@ -199,7 +199,7 @@ void TcpProtocol::handleTcp(std::unique_ptr<TCPClient> tcpClient) {
                 acceptFiles->files = files;
                 acceptFiles->tcpClient = std::move(tcpClient);
                 emit
-                LANShareWindow::getInstance()->sigRequstRecvFiles(acceptFiles);
+                LANShareWindow::getInstance()->sigRequestRecvFiles(acceptFiles);
             }
         } else if (cmd == FS_MESSAGE) {
             const char *message = dataDec.getStr();

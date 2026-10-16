@@ -21,7 +21,6 @@
 #include "LANShareWindow.h"
 #include "ui_LANShareWindow.h"
 #include "Setting.h"
-#include "MessageFile.h"
 #include "Utils.h"
 #include "DeviceSelecter.h"
 #include "About.h"
@@ -33,10 +32,10 @@
 
 LANShareWindow *lanShareWindow = nullptr;
 
-void LANShareWindow::showDeviceSelecter(std::vector<LFile *> &fileaPaths) {
-    auto *deviceSelecter = new DeviceSelecter([fileaPaths](const Device &device) {
-        std::thread tSendfile([device, fileaPaths]() {
-            LANShare::getInstance()->legacyFileTransfer.sendFile(device, fileaPaths, fileaPaths.size());
+void LANShareWindow::showDeviceSelecter(std::vector<LFile *> &filePaths) {
+    auto *deviceSelecter = new DeviceSelecter([filePaths](const Device &device) {
+        std::thread tSendfile([device, filePaths]() {
+            LANShare::getInstance()->legacyFileTransfer.sendFile(device, filePaths, filePaths.size());
         });
         tSendfile.detach();
     }, false, LANShare::getInstance(), this);
@@ -78,19 +77,18 @@ LANShareWindow::LANShareWindow(QWidget *parent) : QMainWindow(parent),
             this, SLOT(newWebClient(QString, QString)));
     connect(this, SIGNAL(sigUpdateProgress()),
             this, SLOT(updateProgress()));
-    connect(this, SIGNAL(sigRecviceFile(LFile * , QString, QString, QString, mlong, bool, bool, bool)),
-            this, SLOT(recviceFile(LFile * , QString, QString, QString, mlong, bool, bool, bool)));
-    connect(this, SIGNAL(sigRecviceFileProgress(QString, int)),
-            this, SLOT(recviceFileProgress(QString, int)));
-    connect(this, SIGNAL(sigRecviceFileSuccess(QString, bool, QString)),
-            this, SLOT(recviceFileSuccess(QString, bool, QString)));
+    connect(this, SIGNAL(sigReceiveFile(LFile * , QString, QString, QString, mlong, bool, bool, bool)),
+            this, SLOT(receiveFile(LFile * , QString, QString, QString, mlong, bool, bool, bool)));
+    connect(this, SIGNAL(sigReceiveFileProgress(QString, int)),
+            this, SLOT(receiveFileProgress(QString, int)));
+    connect(this, SIGNAL(sigReceiveFileSuccess(QString, bool, QString)),
+            this, SLOT(receiveFileSuccess(QString, bool, QString)));
     connect(this, SIGNAL(sigCopyText(QString)),
             this, SLOT(copyText(QString)));
-    connect(this, SIGNAL(sigRequstRecvFiles(AcceptFiles * )),
-            this, SLOT(requstRecvFiles(AcceptFiles * )));
+    connect(this, SIGNAL(sigRequestRecvFiles(AcceptFiles * )),
+            this, SLOT(requestRecvFiles(AcceptFiles * )));
     loadData();
     ui->chatListWidget->scrollToBottom();
-    connect(ui->chatListWidget->verticalScrollBar(), &QScrollBar::valueChanged, this, &LANShareWindow::onScroll);
     mUtils::setFileAssociation(Config::instance().contextMenu);
     if (Config::instance().allowBackgroundRunning) {
         createTrayIcon();
@@ -107,96 +105,79 @@ void LANShareWindow::on_chatListWidget_customContextMenuRequested(const QPoint &
     QListWidgetItem *item = ui->chatListWidget->itemAt(pos);
     if (item == nullptr)
         return;
-    auto *message = (Message *) ui->chatListWidget->itemWidget(item);
-    auto *popMenu = new QMenu(this);
-    auto *openAction = new QAction(tr("打开"), this);
-    auto *openDirAction = new QAction(tr("在文件夹打开"), this);
-    auto *copyText = new QAction(tr("复制文本"), this);
-    auto *freeCopyText = new QAction(tr("自由复制文本"), this);
-    auto *deleteAction = new QAction(tr("删除"), this);
-    auto *messageFile = static_cast<MessageFile *>(message);
-    if (typeid(*message) == typeid(MessageFile) && messageFile->isCompleted()) {
-        popMenu->addAction(openAction);
-        popMenu->addAction(openDirAction);
-        popMenu->addAction(copyText);
-        popMenu->addAction(freeCopyText);
-        popMenu->addAction(deleteAction);
-    } else {
-        popMenu->addAction(copyText);
-        popMenu->addAction(freeCopyText);
-        popMenu->addAction(deleteAction);
+    auto *message = qobject_cast<ChatItemWidget *>(ui->chatListWidget->itemWidget(item));
+    if (message == nullptr)
+        return;
+
+    QMenu popMenu(this);
+    QAction *openAction = nullptr;
+    QAction *openDirAction = nullptr;
+    if (message->hasCompletedFile()) {
+        openAction = popMenu.addAction(tr("打开"));
+        openDirAction = popMenu.addAction(tr("在文件夹打开"));
     }
-    QAction *action = popMenu->exec(QCursor::pos());
+    QAction *copyText = popMenu.addAction(tr("复制文本"));
+    QAction *freeCopyText = popMenu.addAction(tr("自由复制文本"));
+    QAction *deleteAction = popMenu.addAction(tr("删除"));
+
+    QAction *action = popMenu.exec(QCursor::pos());
+    if (action == nullptr) {
+        return;
+    }
+    const QString filePath = message->firstFilePath();
     if (action == openAction) {
-        QDesktopServices::openUrl(QUrl::fromLocalFile(messageFile->getFilePath()));
+        QDesktopServices::openUrl(QUrl::fromLocalFile(filePath));
     } else if (action == openDirAction) {
 #if defined(PLATFORM_WINDOWS)
-        QDir dir(messageFile->getFilePath());
+        QDir dir(filePath);
         QString path = dir.path();
         if (!FileUtils::exists(path)) {
-            QMessageBox::warning(this, "警告", "文件不存在或已经被删除");
+            QMessageBox::warning(this, tr("警告"), tr("文件不存在或已经被删除"));
         } else {
             path.replace("/", "\\");
-            qDebug() << "打开文件路径:" << path;
-            QProcess process;
-            QProcess::startDetached("explorer", QStringList() << QString("/select,") << QString("%1").arg(path));
-            process.waitForFinished();
+            QProcess::startDetached("explorer", QStringList() << "/select," << path);
         }
 #elif defined(PLATFORM_ANDROID) || defined(PLATFORM_LINUX)
-        qDebug() << messageFile->getFilePath();
-        QDir dir(messageFile->getFilePath());
-        QProcess process;
-        QProcess::startDetached("nautilus", QStringList() << QString("%1").arg(messageFile->getFilePath()));
-        process.waitForFinished();
+        QProcess::startDetached("nautilus", QStringList() << filePath);
 #elif defined(PLATFORM_MACOS)
 #endif
     } else if (action == copyText) {
-        qDebug() << message->message;
-        QClipboard *clip = QApplication::clipboard();
-        clip->setText(message->message);
+        QApplication::clipboard()->setText(message->displayText());
     } else if (action == freeCopyText) {
-        qDebug() << message->message;
-        CopyableTextDialog dialog(message->getMessage());
+        CopyableTextDialog dialog(message->displayText());
         dialog.show();
         dialog.exec();
     } else if (action == deleteAction) {
-        LFile *lFile = message->getFile();
-        qDebug() << "lFile is NULL:" << (lFile == nullptr ? "true" : "false");
-        qDebug("lFile：%p", lFile);
-        if (lFile != nullptr) {
-            lFile->cancelFileTransfer();
+        for (LFile *lFile : message->collectFiles()) {
+            if (lFile != nullptr) {
+                lFile->cancelFileTransfer();
+            }
         }
-        MessageDB &messageDb = MessageDB::instance();
-        messageDb.deleteMessage(message->getUuid());
+        MessageDB::instance().deleteMessage(message->uuid());
         ui->chatListWidget->removeItemWidget(item);
         delete item;
     }
-    delete popMenu;
-    delete openAction;
-    delete deleteAction;
 }
 
 void LANShareWindow::on_chatListWidget_itemDoubleClicked(QListWidgetItem *item) {
-    auto *message = (Message *) ui->chatListWidget->itemWidget(item);
+    auto *message = qobject_cast<ChatItemWidget *>(ui->chatListWidget->itemWidget(item));
     if (message == nullptr) {
         return;
     }
-    if (typeid(*message) == typeid(MessageFile)) {
-        auto *messageFile = (MessageFile *) message;
-        QDesktopServices::openUrl(QUrl::fromLocalFile(messageFile->getFilePath()));
+    if (message->isFileMessage()) {
+        const QString path = message->firstFilePath();
+        if (!path.isEmpty()) {
+            QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+        }
     } else {
-        CopyableTextDialog dialog(message->getMessage());
+        CopyableTextDialog dialog(message->displayText());
         dialog.show();
         dialog.exec();
     }
 }
 
 void LANShareWindow::on_chatListWidget_itemClicked(QListWidgetItem *item) {
-    /* Message *message = (Message *) ui->chatListWidget->itemWidget(item);
-     if (message != nullptr && typeid(*message) == typeid(MessageFile)) {
-         MessageFile *messageFile = (MessageFile *) message;
-         QDesktopServices::openUrl(QUrl::fromLocalFile(messageFile->getFilePath()));
-     }*/
+    Q_UNUSED(item)
 }
 
 void LANShareWindow::on_setting_triggered() {
@@ -205,32 +186,30 @@ void LANShareWindow::on_setting_triggered() {
     setting->show();
 }
 
-void LANShareWindow::on_actionclaerAll_triggered() {
-    MessageDB &messageDb = MessageDB::instance();
-    messageDb.deleteAllMessage();
+void LANShareWindow::on_actionClearAll_triggered() {
+    MessageDB::instance().deleteAllMessage();
     for (int i = 0; i < ui->chatListWidget->count(); i++) {
-        QListWidgetItem *item = ui->chatListWidget->item(i);
-        auto *message = (Message *) ui->chatListWidget->itemWidget(item);
-        if (message != nullptr && typeid(*message) == typeid(MessageFile)) {
-            LFile *lFile = message->getFile();
-            if (lFile != nullptr) {
-                lFile->cancelFileTransfer();
+        auto *message = qobject_cast<ChatItemWidget *>(ui->chatListWidget->itemWidget(ui->chatListWidget->item(i)));
+        if (message != nullptr) {
+            for (LFile *lFile : message->collectFiles()) {
+                if (lFile != nullptr) {
+                    lFile->cancelFileTransfer();
+                }
             }
         }
     }
     ui->chatListWidget->clear();
 }
 
-void LANShareWindow::on_actionclearMessage_triggered() {
+void LANShareWindow::on_actionClearMessage_triggered() {
     std::list<QListWidgetItem *> itemList;
     MessageDB &messageDb = MessageDB::instance();
     for (int i = 0; i < ui->chatListWidget->count(); i++) {
         QListWidgetItem *item = ui->chatListWidget->item(i);
-        auto *message = (Message *) ui->chatListWidget->itemWidget(item);
-        if (message != nullptr && typeid(*message) == typeid(Message)) {
+        auto *message = qobject_cast<ChatItemWidget *>(ui->chatListWidget->itemWidget(item));
+        if (message != nullptr && message->isTextMessage()) {
             itemList.push_back(item);
-            messageDb.deleteMessage(message->getUuid());
-            delete message;
+            messageDb.deleteMessage(message->uuid());
         }
     }
     for (auto item: itemList) {
@@ -239,20 +218,20 @@ void LANShareWindow::on_actionclearMessage_triggered() {
     }
 }
 
-void LANShareWindow::on_actionclearFile_triggered() {
+void LANShareWindow::on_actionClearFile_triggered() {
     std::list<QListWidgetItem *> itemList;
     MessageDB &messageDb = MessageDB::instance();
     for (int i = 0; i < ui->chatListWidget->count(); i++) {
         QListWidgetItem *item = ui->chatListWidget->item(i);
-        auto *message = (Message *) ui->chatListWidget->itemWidget(item);
-        if (message != nullptr && typeid(*message) == typeid(MessageFile)) {
+        auto *message = qobject_cast<ChatItemWidget *>(ui->chatListWidget->itemWidget(item));
+        if (message != nullptr && message->isFileMessage()) {
             itemList.push_back(item);
-            messageDb.deleteMessage(message->getUuid());
-            LFile *lFile = message->getFile();
-            if (lFile != nullptr) {
-                lFile->cancelFileTransfer();
+            messageDb.deleteMessage(message->uuid());
+            for (LFile *lFile : message->collectFiles()) {
+                if (lFile != nullptr) {
+                    lFile->cancelFileTransfer();
+                }
             }
-            delete message;
         }
     }
     for (auto item: itemList) {
@@ -261,7 +240,7 @@ void LANShareWindow::on_actionclearFile_triggered() {
     }
 }
 
-void LANShareWindow::on_actionabout_triggered() {
+void LANShareWindow::on_actionAbout_triggered() {
     auto *about = new About(this);
     about->show();
 }
@@ -272,37 +251,37 @@ void LANShareWindow::sendMessage(bool isClip) {
         return;
     }
     ui->textEdit->setText("");
-    auto *messageW = new Message(msg, Config::instance().clientName, Device::L_WIN, false, ui->chatListWidget->parentWidget());
-    messageW->setUuid(Utils::getUUID());
+    ChatMessage data = ChatMessage::fromText(msg, Config::instance().clientName, Device::L_WIN, ChatDirection::Right);
+    data.uuid = Utils::getUUID();
+    auto *messageW = new ChatItemWidget(data, ui->chatListWidget);
     auto *item = new QListWidgetItem(ui->chatListWidget);
-    dealMessage(messageW, item);
+    handleMessage(messageW, item);
     ui->chatListWidget->scrollToBottom();
     LANShare::getInstance()->udpProtocol.broadcastMessage(currentDevice.getDevName().isEmpty() ? nullptr : &currentDevice, msg,
                                               isClip, true);
     ui->textEdit->setFocus();
-    MessageDB &messageDb = MessageDB::instance();
-    messageDb.addMessage(messageW);
+    MessageDB::instance().addMessage(messageW->message());
 }
 
 void LANShareWindow::on_sendButton_clicked() {
     sendMessage();
 }
 
-void LANShareWindow::on_select_send_devices_clicked() {
+void LANShareWindow::on_selectSendDevices_clicked() {
     auto *deviceSelecter = new DeviceSelecter([this](const Device &device) {
         if (device.getDevIp().isEmpty()) {
             currentDevice = Device();
-            ui->select_send_devices->setText(tr("所有设备"));
+            ui->selectSendDevices->setText(tr("所有设备"));
         } else {
             currentDevice = device;
-            ui->select_send_devices->setText(device.getDevName());
+            ui->selectSendDevices->setText(device.getDevName());
             qDebug() << "选择设备:" << currentDevice.getDevName();
         }
     }, true, LANShare::getInstance(), this);
     deviceSelecter->show();
 }
 
-void LANShareWindow::on_select_files_clicked() {
+void LANShareWindow::on_selectFiles_clicked() {
     // 创建一个文件对话框
     QFileDialog fileDialog;
     // 设置对话框的标题
@@ -348,7 +327,7 @@ void LANShareWindow::on_webService_clicked() {
     updateWebServiceIp();
 }
 
-void LANShareWindow::on_select_directorys_clicked() {
+void LANShareWindow::on_selectDirectories_clicked() {
     // 创建一个文件对话框
     QFileDialog fileDialog;
     // 设置对话框的标题
@@ -377,15 +356,14 @@ void LANShareWindow::on_select_directorys_clicked() {
 }
 
 void LANShareWindow::newMessage(Device device, QString message, bool isLeft) {
-    auto *messageW = new Message(
+    ChatMessage data = ChatMessage::fromText(
         message, device.getDevName(), device.getDevMode(),
-        isLeft, ui->chatListWidget
-    );
-    messageW->setUuid(Utils::getUUID());
+        isLeft ? ChatDirection::Left : ChatDirection::Right);
+    data.uuid = Utils::getUUID();
+    auto *messageW = new ChatItemWidget(data, ui->chatListWidget);
     auto *item = new QListWidgetItem(ui->chatListWidget);
-    dealMessage(messageW, item);
-    MessageDB &messageDb = MessageDB::instance();
-    messageDb.addMessage(messageW);
+    handleMessage(messageW, item);
+    MessageDB::instance().addMessage(messageW->message());
     ui->chatListWidget->scrollToBottom();
 }
 
@@ -430,16 +408,18 @@ void LANShareWindow::dropEvent(QDropEvent *event) {
     showDeviceSelecter(list);
 }
 
-void LANShareWindow::dealMessage(Message *messageW, QListWidgetItem *item) {
+void LANShareWindow::handleMessage(ChatItemWidget *messageW, QListWidgetItem *item) {
     item->setSizeHint(messageW->sizeHint());
     ui->chatListWidget->addItem(item);
     ui->chatListWidget->setItemWidget(item, messageW);
+    item->setSizeHint(messageW->sizeHint());
 }
 
-void LANShareWindow::insertMessage(Message *messageW, QListWidgetItem *item) {
+void LANShareWindow::insertMessage(ChatItemWidget *messageW, QListWidgetItem *item) {
     item->setSizeHint(messageW->sizeHint());
     ui->chatListWidget->insertItem(0, item);
     ui->chatListWidget->setItemWidget(item, messageW);
+    item->setSizeHint(messageW->sizeHint());
 }
 
 void LANShareWindow::resizeEvent(QResizeEvent *event) {
@@ -595,62 +575,69 @@ bool LANShareWindow::eventFilter(QObject *watched, QEvent *event) {
 
 void LANShareWindow::updateProgress() {
     for (int i = 0; i < ui->chatListWidget->count(); i++) {
-        auto *pMessageFile = (MessageFile *) ui->chatListWidget->itemWidget(ui->chatListWidget->item(i));
-        if (pMessageFile != nullptr) {
-            pMessageFile->setProgress(0);
+        auto *message = qobject_cast<ChatItemWidget *>(ui->chatListWidget->itemWidget(ui->chatListWidget->item(i)));
+        if (message != nullptr) {
+            message->resetAllProgress();
         }
     }
-    ui->chatListWidget->update();
+    ui->chatListWidget->viewport()->update();
 }
 
-void LANShareWindow::recviceFile(LFile *lFile, const QString &uuid, QString message, QString userName, mlong fileSize,
+void LANShareWindow::receiveFile(LFile *lFile, const QString &uuid, QString message, QString userName, mlong fileSize,
                                  bool left, bool isFile, bool completed) {
-    auto *messageW = new MessageFile(message, userName, 2, left, isFile, ui->chatListWidget->parentWidget());
-    messageW->setUuid(uuid);
-    messageW->setFileSize(fileSize);
-    messageW->setFileSizeStr(QString::fromStdString(Utils::computeSize(fileSize)));
-    messageW->setFile(lFile);
-    if (completed) {
-        messageW->setCompleted(true);
-        messageW->setRecviced(true);
+    const ChatDirection dir = left ? ChatDirection::Left : ChatDirection::Right;
+    // 图片文件（发送侧标记 FILE_IMAGE 或按扩展名判定）改用 Image 元素，
+    // 消息列表直接展示缩略图；所有传输链路都汇聚到本槽，网络层无需改动
+    const bool isImage = (lFile != nullptr && lFile->getFileType() == FILE_IMAGE)
+                         || ChatMessage::isImageName(message);
+    ChatMessage data = isImage
+                           ? ChatMessage::fromImage(QString(), message, uuid, userName,
+                                                    Device::L_WIN, dir, fileSize)
+                           : ChatMessage::fromFile(message, uuid, userName, Device::L_WIN,
+                                                   dir, fileSize, !isFile);
+    data.uuid = uuid;
+    ContentElement *el = isImage ? data.firstOf(ElementType::Image) : data.firstOf(ElementType::File);
+    if (el != nullptr) {
+        el->file = lFile;
+        el->sizeStr = QString::fromStdString(Utils::computeSize(fileSize));
+        if (completed) {
+            el->completed = true;
+            el->received = true;
+            el->progress = 100;
+            if (isImage && lFile != nullptr && !lFile->getPath().isEmpty()) {
+                el->filePath = lFile->getPath();
+            }
+        }
     }
-    qDebug() << messageW->getFileSizeStr();
+    auto *messageW = new ChatItemWidget(data, ui->chatListWidget);
     auto *item = new QListWidgetItem(ui->chatListWidget);
-    dealMessage(messageW, item);
-    MessageDB &messageDb = MessageDB::instance();
-    messageDb.addMessage(messageW);
+    handleMessage(messageW, item);
+    MessageDB::instance().addMessage(messageW->message());
     ui->chatListWidget->scrollToBottom();
 }
 
-void LANShareWindow::recviceFileProgress(const QString &uuid, int progress) {
+void LANShareWindow::receiveFileProgress(const QString &uuid, int progress) {
     for (int i = 0; i < ui->chatListWidget->count(); i++) {
-        auto *message = (Message *) ui->chatListWidget->itemWidget(ui->chatListWidget->item(i));
-        if (message != nullptr && typeid(*message) == typeid(MessageFile)) {
-            auto *messageFile = (MessageFile *) message;
-            if (messageFile->getUuid() == uuid) {
-                messageFile->setProgress(progress);
-                ui->chatListWidget->update();
-                break;
-            }
+        auto *message = qobject_cast<ChatItemWidget *>(ui->chatListWidget->itemWidget(ui->chatListWidget->item(i)));
+        if (message != nullptr && message->setElementProgress(uuid, progress)) {
+            ui->chatListWidget->viewport()->update();
+            break;
         }
     }
 }
 
-void LANShareWindow::recviceFileSuccess(const QString &uuid, bool completed, const QString &filePath) {
+void LANShareWindow::receiveFileSuccess(const QString &uuid, bool completed, const QString &filePath) {
     MessageDB &messageDb = MessageDB::instance();
     for (int i = 0; i < ui->chatListWidget->count(); i++) {
-        auto *message = (Message *) ui->chatListWidget->itemWidget(ui->chatListWidget->item(i));
-        if (message != nullptr && typeid(*message) == typeid(MessageFile)) {
-            auto *messageFile = (MessageFile *) message;
-            if (messageFile->getUuid() == uuid) {
-                messageFile->setRecviced(true);
-                messageFile->setFilePath(filePath);
-                messageFile->setCompleted(completed);
-                messageFile->setFile(nullptr);
-                messageDb.updateMessage(messageFile);
-                ui->chatListWidget->update();
-                break;
-            }
+        auto *message = qobject_cast<ChatItemWidget *>(ui->chatListWidget->itemWidget(ui->chatListWidget->item(i)));
+        if (message == nullptr) {
+            continue;
+        }
+        if (message->setElementResult(uuid, completed, filePath, true)) {
+            message->clearFilePointers();
+            messageDb.updateMessage(message->message());
+            ui->chatListWidget->viewport()->update();
+            break;
         }
     }
 }
@@ -707,7 +694,7 @@ LANShareWindow *LANShareWindow::getInstance() {
     return lanShareWindow;
 }
 
-void LANShareWindow::requstRecvFiles(AcceptFiles *acceptFiles) {
+void LANShareWindow::requestRecvFiles(AcceptFiles *acceptFiles) {
     QMessageBox msgBox(this);
     msgBox.setText(QString(tr("是否接收设备：【%1】发送的%2个文件")).arg(acceptFiles->device.getDevName(), QString::number(acceptFiles->files.size())));
     msgBox.setWindowTitle(tr("接收文件请求"));
@@ -800,20 +787,36 @@ void LANShareWindow::createTrayIcon() {
 }
 
 void LANShareWindow::loadData() {
-    if (!loadingData) {
-        loadingData = true;
-        MessageDB &messageDb = MessageDB::instance();
-        std::list<Message *> data = messageDb.queryList(pageSize, pageCount++, ui->chatListWidget);
-        qDebug() << "data:" << data.size();
-        qDebug() << "pageCount:" << pageCount;
-        qDebug() << "pageSize:" << pageSize;
-        for (auto rit = data.rbegin(); rit != data.rend(); ++rit) {
-            auto *item = new QListWidgetItem();
-            insertMessage(*rit, item);
-        }
-        // 恢复之前的顶部行号
-        ui->chatListWidget->scrollToItem(ui->chatListWidget->item((int) (data.size() - 1)),
-                                         QAbstractItemView::PositionAtTop);
-        loadingData = false;
+    if (loadingData) {
+        return;
     }
+    loadingData = true;
+    MessageDB &messageDb = MessageDB::instance();
+    std::list<ChatMessage> data = messageDb.queryList(pageSize, pageCount++);
+    if (data.empty()) {
+        loadingData = false;
+        return;
+    }
+    QScrollBar *bar = ui->chatListWidget->verticalScrollBar();
+    // 先停掉缓动动画：否则动画 tick 会用旧目标位置覆盖下面的恢复（"弹跳"根因）
+    if (smoothScrollHandler != nullptr) {
+        smoothScrollHandler->cancel();
+    }
+    // ScrollPerPixel 下 value 即像素偏移：顶部插入 N 像素内容后，
+    // 把 value 平移 N 即可像素级保持画面不动（比 scrollToItem 精确且无跳变）
+    const int valueBefore = bar->value();
+    int addedHeight = 0;
+    // 批量插入期间冻结重绘：避免每条 insertMessage 都触发全列表重排+重绘
+    ui->chatListWidget->setUpdatesEnabled(false);
+    for (auto rit = data.rbegin(); rit != data.rend(); ++rit) {
+        auto *messageW = new ChatItemWidget(*rit, ui->chatListWidget);
+        auto *item = new QListWidgetItem();
+        insertMessage(messageW, item);
+        addedHeight += item->sizeHint().height();
+    }
+    // 强制完成延迟布局，确保 scrollbar 范围已更新再恢复位置
+    ui->chatListWidget->doItemsLayout();
+    bar->setValue(valueBefore + addedHeight);
+    ui->chatListWidget->setUpdatesEnabled(true);
+    loadingData = false;
 }
