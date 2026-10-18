@@ -256,6 +256,13 @@
         </widget>
        </item>
        <item>
+        <widget class="QCheckBox" name="useInternalPreview">
+         <property name="text">
+          <string>使用内置预览器打开图片</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <layout class="QHBoxLayout" name="horizontalLayout_2">
          <item>
           <widget class="QLabel" name="label">

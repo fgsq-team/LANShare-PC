@@ -23,6 +23,7 @@
 #include "ChatMessage.h"
 
 class LFile;
+class QCheckBox;
 
 /**
  * 聊天正文文本浏览器。
@@ -93,7 +94,33 @@ private:
 };
 
 /**
- * 文件/文件夹气泡：图标 + 名称 + 大小 + 进度条 + 状态。
+ * 胶囊形进度条（自绘）。
+ * QProgressBar 的 QSS chunk 在贴靠进度条起始端时圆角拼接有缺陷：
+ * 低进度时填充块左端渲染成矩形，宽度超过半径后才变圆角。这里直接
+ * 手绘轨道与填充两端全圆角的胶囊，窄填充兜底拉伸到直径保证两端半圆。
+ */
+class PillProgressBar : public QWidget {
+Q_OBJECT
+public:
+    explicit PillProgressBar(QWidget *parent = nullptr);
+
+    void setValue(int value);
+    int value() const { return m_value; }
+    void setColors(const QColor &track, const QColor &chunk);
+
+    QSize sizeHint() const override { return QSize(160, 8); }
+
+protected:
+    void paintEvent(QPaintEvent *event) override;
+
+private:
+    int m_value = 0;
+    QColor m_track;
+    QColor m_chunk;
+};
+
+/**
+ * 文件/文件夹气泡：图标 + 名称 + 大小 + 进度条 + 状态胶囊（圆形徽标 + 文字）。
  */
 class FileBubble : public BubbleFrame {
 Q_OBJECT
@@ -119,8 +146,10 @@ private:
     QLabel *m_icon = nullptr;
     QLabel *m_name = nullptr;
     QLabel *m_size = nullptr;
-    QLabel *m_status = nullptr;
-    QProgressBar *m_progress = nullptr;
+    QWidget *m_statusChip = nullptr;   // 状态胶囊容器（圆角背景）
+    QLabel *m_statusIcon = nullptr;    // 胶囊内的圆形徽标
+    QLabel *m_statusText = nullptr;    // 胶囊内的状态文字
+    PillProgressBar *m_progress = nullptr;
     bool m_isDirectory = false;
     bool m_completed = false;
     bool m_received = false;
@@ -129,7 +158,12 @@ private:
 };
 
 /**
- * 图片气泡：缩略图 + 点击预览（懒加载，进入布局时异步读取缩略图）。
+ * 图片气泡：传输中居中显示文件名 + 进度，成功后才加载缩略图 + 点击预览。
+ *
+ * 缩略图解码全部交给 ThumbnailLoader（后台线程 + LRU 缓存）：
+ * 历史消息里一张原图动辄几千万像素，如果在构造时同步整图解码，
+ * 分页加载会一次性卡住主线程几百毫秒，这里改为"控件可见才请求、
+ * 解完回填"，翻页与滚动都不会被解码阻塞。
  */
 class ImageBubble : public BubbleFrame {
 Q_OBJECT
@@ -137,23 +171,47 @@ public:
     ImageBubble(const QString &path, const QString &name,
                 ChatDirection dir, QWidget *parent = nullptr);
 
+    ~ImageBubble() override;
+
     void setPath(const QString &path);
+
+    /// 传输进度：未完成时在图片中心显示文件名 + 百分比。
+    void setProgress(int progress);
 
     /// 传输结果回写：成功刷新缩略图，失败显示占位文案。
     void setResult(bool completed, const QString &filePath, bool received);
+
+    /// 重新发送时回到传输中状态：丢弃缩略图/失败文案，恢复文件名 + 进度占位。
+    void restart();
+
+    /// 后台解码完成后由 ThumbnailLoader 在主线程回调（pixmap 为空表示解码失败）。
+    void applyThumbnail(const QPixmap &pixmap);
 
 signals:
     void imageClicked(const QString &path);
 
 protected:
     void mousePressEvent(QMouseEvent *event) override;
+    void showEvent(QShowEvent *event) override;
 
 private:
-    void loadThumbnail();
+    /// 请求缩略图：命中缓存立即回填，否则排队等后台解码（仅在控件可见时发起）。
+    void requestThumbnail();
+    /// 未完成占位：深色圆角块上居中显示文件名与进度百分比。
+    void updatePlaceholder();
+    /// 仅在样式真的变化时重设样式表（setStyleSheet 会强制 polish + 重绘）。
+    void setThumbStyle(const QString &style);
+
     QLabel *m_thumb = nullptr;
     QString m_path;
     QString m_name;
+    QString m_thumbKey;
+    QString m_thumbStyle;   // 已应用到 m_thumb 的样式表，避免重复 setStyleSheet 触发重绘
     bool m_loaded = false;
+    bool m_completed = false;
+    bool m_thumbApplied = false;
+    bool m_thumbRequested = false;
+    int m_progress = 0;
 };
 
 /**
@@ -171,11 +229,22 @@ public:
     bool isFileMessage() const { return m_msg.hasMedia(); }
     bool isTextMessage() const { return !m_msg.hasMedia(); }
 
+    // --- 多选模式 ---
+    /// 进入/退出多选模式：切换勾选框可见性，退出时清空勾选。
+    void setCheckMode(bool on);
+    bool isCheckMode() const { return m_checkMode; }
+    bool isSelected() const;
+    void setSelected(bool sel);
+
     // --- 元素级状态更新（按 elementUuid 定位）---
     bool setElementProgress(const QString &elementUuid, int progress);
     bool setElementResult(const QString &elementUuid, bool completed,
                           const QString &filePath, bool received);
     void resetAllProgress();
+
+    /// 重发同一文件时复用原消息：按 elementUuid 把元素重置为传输中状态，
+    /// 重新绑定运行期 LFile 并刷新大小；命中返回 true。
+    bool restartElement(const QString &elementUuid, LFile *file, mlong size, const QString &sizeStr);
 
     // --- 交互数据访问 ---
     QString displayText() const { return m_msg.displayText(); }
@@ -188,8 +257,17 @@ public:
 
     QSize sizeHint() const override;
 
+signals:
+    /// 图片气泡被点击，请求在预览窗口打开该图（由主窗口汇聚整段会话的图片列表统一处理）。
+    void imageRequested(const QString &path);
+
+    /// 多选模式下勾选状态变化，主窗口据此刷新“已选 N 项”计数与全选态。
+    void selectionChanged();
+
 protected:
     void changeEvent(QEvent *event) override;
+    /// 多选模式下列在空白区域的点击也切换勾选（子气泡自行消费的事件不在此列）。
+    void mousePressEvent(QMouseEvent *event) override;
 
 private:
     void build();
@@ -202,6 +280,8 @@ private:
     QVBoxLayout *m_column = nullptr;
     QVector<BubbleFrame *> m_bubbles;
     QMap<QString, BubbleFrame *> m_bubbleByUuid;
+    QCheckBox *m_check = nullptr;   // 多选勾选框（默认隐藏）
+    bool m_checkMode = false;       // 是否处于多选模式
 };
 
 #endif //LANSHARE_CHATITEMWIDGET_H

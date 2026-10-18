@@ -52,11 +52,27 @@ MessageDB::MessageDB() {
         "fileSizeStr text,"
         "createTime varchar,"
         "timeStamp INTEGER,"
-        "isdel INTEGER)"
+        "isdel INTEGER,"
+        "progress INTEGER)"
     )) {
         qDebug() << "创建表失败";
     } else {
         qDebug() << "创建表成功";
+    }
+    // 旧库升级：早期 message_v2 没有 progress 列，缺失时补一列（存量行取默认 0）
+    bool hasProgress = false;
+    if (sql_query->exec("PRAGMA table_info(message)")) {
+        while (sql_query->next()) {
+            if (sql_query->value(1).toString().compare("progress", Qt::CaseInsensitive) == 0) {
+                hasProgress = true;
+                break;
+            }
+        }
+    }
+    if (!hasProgress) {
+        if (!sql_query->exec("ALTER TABLE message ADD COLUMN progress INTEGER DEFAULT 0")) {
+            qDebug() << "添加 progress 列失败: " << sql_query->lastError();
+        }
     }
 }
 
@@ -83,6 +99,7 @@ void MessageDB::updateMessage(const ChatMessage &message) {
             "recviced=:recviced, "
             "fileSize=:fileSize, "
             "fileSizeStr=:fileSizeStr, "
+            "progress=:progress, "
             "isdel=:isdel "
             "WHERE id=:id";
     sql_query->prepare(sql);
@@ -107,6 +124,7 @@ void MessageDB::updateMessage(const ChatMessage &message) {
         sql_query->bindValue(":recviced", media->received);
         sql_query->bindValue(":fileSize", QVariant::fromValue(media->size));
         sql_query->bindValue(":fileSizeStr", media->sizeStr);
+        sql_query->bindValue(":progress", media->progress);
     } else {
         sql_query->bindValue(":messageType", MESSAGE_TYPE);
         sql_query->bindValue(":message", message.displayText());
@@ -116,6 +134,7 @@ void MessageDB::updateMessage(const ChatMessage &message) {
         sql_query->bindValue(":recviced", false);
         sql_query->bindValue(":fileSize", 0);
         sql_query->bindValue(":fileSizeStr", "");
+        sql_query->bindValue(":progress", 0);
     }
     if (!sql_query->exec()) {
         qDebug() << "更新数据失败: " << sql_query->lastError();
@@ -130,8 +149,9 @@ void MessageDB::addMessage(const ChatMessage &message) {
     std::lock_guard<std::mutex> lock(addMessageLock); // 自动锁定 mtx
     const QString &uuid = message.uuid;
 
-    // 使用占位符进行插入操作
-    sql_query->prepare("INSERT INTO message VALUES("
+    // 使用占位符进行插入操作；V5 链路的消息 id 取自稳定 fileId，重发/被删除后
+    // 再次传输可能命中同一主键，用 REPLACE 语义避免插入失败丢消息
+    sql_query->prepare("INSERT OR REPLACE INTO message VALUES("
         ":uuid,"
         ":messageType,"
         ":message,"
@@ -150,7 +170,8 @@ void MessageDB::addMessage(const ChatMessage &message) {
         ":fileSizeStr,"
         ":createTime,"
         ":timeStamp,"
-        ":isdel"
+        ":isdel,"
+        ":progress"
         ")"
     );
     sql_query->bindValue(":uuid", uuid);
@@ -178,6 +199,7 @@ void MessageDB::addMessage(const ChatMessage &message) {
         sql_query->bindValue(":recviced", media->received);
         sql_query->bindValue(":fileSize", QVariant::fromValue(media->size));
         sql_query->bindValue(":fileSizeStr", media->sizeStr);
+        sql_query->bindValue(":progress", media->progress);
     } else {
         sql_query->bindValue(":messageType", MESSAGE_TYPE);
         // 文本消息正文加密存储
@@ -188,6 +210,7 @@ void MessageDB::addMessage(const ChatMessage &message) {
         sql_query->bindValue(":recviced", false);
         sql_query->bindValue(":fileSize", 0);
         sql_query->bindValue(":fileSizeStr", "");
+        sql_query->bindValue(":progress", 0);
     }
     if (!sql_query->exec()) {
         qDebug() << "Error inserting into table:" << sql_query->lastError();
@@ -242,6 +265,7 @@ std::list<ChatMessage> MessageDB::queryList(int pageSize, int pageCount) {
             QString createTime = sql_query->value(index++).toString();
             mlong timeStamp = sql_query->value(index++).toLongLong();
             bool isdel = sql_query->value(index++).toBool();
+            int savedProgress = sql_query->value(index++).toInt();
             Q_UNUSED(toUser);
             Q_UNUSED(isVideo);
             Q_UNUSED(videoTime);
@@ -265,7 +289,7 @@ std::list<ChatMessage> MessageDB::queryList(int pageSize, int pageCount) {
                     el->sizeStr = fileSizeStr;
                     el->completed = completed;
                     el->received = recviced || completed;
-                    el->progress = completed ? 100 : 0;
+                    el->progress = completed ? 100 : qBound(0, savedProgress, 99);
                 }
                 messageList.push_back(msg);
             } else if (messageType == MESSAGE_TYPE) {

@@ -28,7 +28,9 @@ public:
     void onStart(FileTransfer *fileTransfer) override {
         auto devName = fileTransfer->fromDevice.getDevName();
         for (auto file: fileTransfer->files) {
-            file->setUuid(Utils::getUUID());
+            // 消息 uuid 采用发送方传来的稳定 fileId：同一文件重发时命中原消息气泡，
+            // 而不是堆积重复消息
+            file->setUuid(file->getFileId().isEmpty() ? Utils::getUUID() : file->getFileId());
             emit
             LANShareWindow::getInstance()->sigReceiveFile(
                 file,

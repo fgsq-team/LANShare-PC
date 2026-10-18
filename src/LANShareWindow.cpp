@@ -1,11 +1,17 @@
 #include <QTextBlock>
 #include <QGridLayout>
+#include <QHBoxLayout>
+#include <QCheckBox>
+#include <QLabel>
+#include <QPushButton>
+#include <QSignalBlocker>
 #include <QFileDialog>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QIcon>
 #include <QUuid>
 #include <QScrollBar>
+#include <QHash>
 
 #include <qmimedata.h>
 #include <QClipboard>
@@ -29,8 +35,30 @@
 #include "LANShare.h"
 #include "FileUtils.h"
 #include "UpdateChecker.h"
+#include "ImagePreview.h"
 
 LANShareWindow *lanShareWindow = nullptr;
+
+namespace {
+
+/// 进度落库节流：回调按数据块频率触发，每次都 UPDATE 整行扫不住 SQLite，
+/// 变化满 5% （以及 0/100 两端）才写一次；崩溃/断连后重启可恢复到近似进度
+QHash<QString, int> g_lastSavedProgress;
+
+void persistProgressThrottled(ChatItemWidget *message, const QString &uuid, int progress) {
+    if (progress >= 100) {
+        MessageDB::instance().updateMessage(message->message());
+        g_lastSavedProgress.remove(uuid);
+        return;
+    }
+    int &last = g_lastSavedProgress[uuid];
+    if (progress <= 0 || qAbs(progress - last) >= 5) {
+        last = progress;
+        MessageDB::instance().updateMessage(message->message());
+    }
+}
+
+} // namespace
 
 void LANShareWindow::showDeviceSelecter(std::vector<LFile *> &filePaths) {
     auto *deviceSelecter = new DeviceSelecter([filePaths](const Device &device) {
@@ -48,7 +76,11 @@ LANShareWindow::LANShareWindow(QWidget *parent) : QMainWindow(parent),
     lanShareWindow = this;
     UpdateChecker::check(this, false);
     ui->setupUi(this);
+    // 逐像素滚动 + 关闭“按内容调尺寸”：后者会在每次插入 item 时重算整个
+    // 内容尺寸，是分页与滚动掉帧的来头之一（在 .ui 里也已改为 AdjustIgnored）
     ui->chatListWidget->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    ui->chatListWidget->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
+    ui->chatListWidget->setSizeAdjustPolicy(QAbstractScrollArea::AdjustIgnored);
     ui->chatListWidget->setSelectionMode(QAbstractItemView::NoSelection);
     // ui->chatListWidget->installEventFilter(this);
     connect(ui->chatListWidget->verticalScrollBar(), &QScrollBar::valueChanged, this, &LANShareWindow::onScroll);
@@ -60,6 +92,7 @@ LANShareWindow::LANShareWindow(QWidget *parent) : QMainWindow(parent),
     // 禁止富文本
     ui->textEdit->setAcceptRichText(false);
     ui->chatListWidget->setContextMenuPolicy(Qt::CustomContextMenu);
+    buildSelectBar();
     ui->webService->setChecked(Config::instance().webService);
     setAcceptDrops(true);
     setWindowIcon(QIcon(":/img/ic_launcher.png"));
@@ -112,13 +145,20 @@ void LANShareWindow::on_chatListWidget_customContextMenuRequested(const QPoint &
     QMenu popMenu(this);
     QAction *openAction = nullptr;
     QAction *openDirAction = nullptr;
+    QAction *resendAction = nullptr;
     if (message->hasCompletedFile()) {
         openAction = popMenu.addAction(tr("打开"));
         openDirAction = popMenu.addAction(tr("在文件夹打开"));
     }
+    // 文件/图片消息可重新发送：没传完的由 V5 续传协议自动从断点继续，
+    // 传完的直接全量重发
+    if (message->isFileMessage()) {
+        resendAction = popMenu.addAction(tr("发送"));
+    }
     QAction *copyText = popMenu.addAction(tr("复制文本"));
     QAction *freeCopyText = popMenu.addAction(tr("自由复制文本"));
     QAction *deleteAction = popMenu.addAction(tr("删除"));
+    QAction *multiSelectAction = popMenu.addAction(tr("多选"));
 
     QAction *action = popMenu.exec(QCursor::pos());
     if (action == nullptr) {
@@ -141,6 +181,8 @@ void LANShareWindow::on_chatListWidget_customContextMenuRequested(const QPoint &
         QProcess::startDetached("nautilus", QStringList() << filePath);
 #elif defined(PLATFORM_MACOS)
 #endif
+    } else if (resendAction != nullptr && action == resendAction) {
+        resendMessageFiles(message);
     } else if (action == copyText) {
         QApplication::clipboard()->setText(message->displayText());
     } else if (action == freeCopyText) {
@@ -156,10 +198,58 @@ void LANShareWindow::on_chatListWidget_customContextMenuRequested(const QPoint &
         MessageDB::instance().deleteMessage(message->uuid());
         ui->chatListWidget->removeItemWidget(item);
         delete item;
+    } else if (action == multiSelectAction) {
+        enterSelectMode(item);
     }
 }
 
+/**
+ * 重新发送消息中的文件/图片
+ *
+ * 发送方失败消息的 filePath 记录的是源文件路径，接收完成的为本地保存路径，
+ * 两者均可直接再次发送。重建的 LFile 与原文件路径、大小一致，V5 协议下
+ * 稳定 fileId 也一致：接收端仍持有 .part 分段的未传完文件会从断点继续，
+ * 已传完的文件（分段已落地）偏移量为 0，等价于全量重新发送。
+ */
+void LANShareWindow::resendMessageFiles(ChatItemWidget *message) {
+    std::vector<LFile *> list;
+    const ChatMessage &msg = message->message();
+    for (const ContentElement &el: msg.elements) {
+        if (el.type != ElementType::File && el.type != ElementType::Image) {
+            continue;
+        }
+        QString path = el.filePath;
+        if (path.isEmpty() && el.file != nullptr) {
+            // 传输进行中的发送方消息尚未回写 filePath，取运行期 LFile 的源路径
+            path = el.file->getPath();
+        }
+        QFileInfo fileInfo(path);
+        if (!fileInfo.exists()) {
+            continue;
+        }
+        auto *lFile = new LFile();
+        lFile->setFileId(el.elementUuid);
+        lFile->setFileName(fileInfo.fileName());
+        lFile->setFileSize(fileInfo.size());
+        lFile->setPath(fileInfo.filePath());
+        lFile->setIsDirectory(fileInfo.isDir());
+        list.push_back(lFile);
+    }
+    if (list.empty()) {
+        QMessageBox::warning(this, tr("警告"), tr("文件不存在或已经被删除"));
+        return;
+    }
+    showDeviceSelecter(list);
+}
+
 void LANShareWindow::on_chatListWidget_itemDoubleClicked(QListWidgetItem *item) {
+    if (m_selectMode) {
+        // 多选模式下双击不打开预览，只切换勾选
+        if (ChatItemWidget *w = widgetOfItem(item)) {
+            w->setSelected(!w->isSelected());
+        }
+        return;
+    }
     auto *message = qobject_cast<ChatItemWidget *>(ui->chatListWidget->itemWidget(item));
     if (message == nullptr) {
         return;
@@ -167,7 +257,11 @@ void LANShareWindow::on_chatListWidget_itemDoubleClicked(QListWidgetItem *item) 
     if (message->isFileMessage()) {
         const QString path = message->firstFilePath();
         if (!path.isEmpty()) {
-            QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+            if (ChatMessage::isImageName(path)) {
+                openImagePreview(path);
+            } else {
+                QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+            }
         }
     } else {
         CopyableTextDialog dialog(message->displayText());
@@ -177,7 +271,11 @@ void LANShareWindow::on_chatListWidget_itemDoubleClicked(QListWidgetItem *item) 
 }
 
 void LANShareWindow::on_chatListWidget_itemClicked(QListWidgetItem *item) {
-    Q_UNUSED(item)
+    if (m_selectMode) {
+        if (ChatItemWidget *w = widgetOfItem(item)) {
+            w->setSelected(!w->isSelected());
+        }
+    }
 }
 
 void LANShareWindow::on_setting_triggered() {
@@ -199,6 +297,9 @@ void LANShareWindow::on_actionClearAll_triggered() {
         }
     }
     ui->chatListWidget->clear();
+    // 库已清空：分页游标与“无更多”标记必须归零，否则滚到顶部不会再拉数据
+    pageCount = 0;
+    noMoreData = false;
 }
 
 void LANShareWindow::on_actionClearMessage_triggered() {
@@ -409,17 +510,22 @@ void LANShareWindow::dropEvent(QDropEvent *event) {
 }
 
 void LANShareWindow::handleMessage(ChatItemWidget *messageW, QListWidgetItem *item) {
+    connect(messageW, &ChatItemWidget::imageRequested, this, &LANShareWindow::openImagePreview);
+    connect(messageW, &ChatItemWidget::selectionChanged, this, &LANShareWindow::refreshSelectionState);
+    messageW->setCheckMode(m_selectMode);
+    // 只设一次 sizeHint：重复设置会让 QListWidget 再跑一轮项布局
     item->setSizeHint(messageW->sizeHint());
     ui->chatListWidget->addItem(item);
     ui->chatListWidget->setItemWidget(item, messageW);
-    item->setSizeHint(messageW->sizeHint());
 }
 
 void LANShareWindow::insertMessage(ChatItemWidget *messageW, QListWidgetItem *item) {
+    connect(messageW, &ChatItemWidget::imageRequested, this, &LANShareWindow::openImagePreview);
+    connect(messageW, &ChatItemWidget::selectionChanged, this, &LANShareWindow::refreshSelectionState);
+    messageW->setCheckMode(m_selectMode);
     item->setSizeHint(messageW->sizeHint());
     ui->chatListWidget->insertItem(0, item);
     ui->chatListWidget->setItemWidget(item, messageW);
-    item->setSizeHint(messageW->sizeHint());
 }
 
 void LANShareWindow::resizeEvent(QResizeEvent *event) {
@@ -432,15 +538,232 @@ void LANShareWindow::resizeEvent(QResizeEvent *event) {
 
 
 void LANShareWindow::onScroll(int value) {
-    // qDebug() << "Scroll value changed to:" << value;
-    if (value == 0) {
-        // 向上滚动
-        if (ui->chatListWidget->verticalScrollBar()->value() ==
-            ui->chatListWidget->verticalScrollBar()->minimum()) {
-            qDebug("top");
-            loadData();
+    Q_UNUSED(value)
+    QScrollBar *bar = ui->chatListWidget->verticalScrollBar();
+    if (bar->value() > bar->minimum() || noMoreData || loadingData || pendingLoad) {
+        return;
+    }
+    // 推到下一轮事件循环再建页：滚动（或惯性逐帧 setValue）过程中同步查库、
+    // 解密、构控件，会把正在滚动的这几帧全部拖住
+    pendingLoad = true;
+    QTimer::singleShot(0, this, [this] {
+        pendingLoad = false;
+        loadData();
+    });
+}
+
+void LANShareWindow::openImagePreview(const QString &path) {
+    // 多选模式下不弹预览，避免与选择操作冲突
+    if (m_selectMode) {
+        return;
+    }
+    // 未开启内置预览器时，直接用系统默认程序打开这一张图
+    if (!Config::instance().useInternalImagePreview) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+        return;
+    }
+    // 汇聚整段会话中已下载完成的图片（按出现顺序去重），作为预览窗口的浏览列表
+    QStringList images;
+    for (int i = 0; i < ui->chatListWidget->count(); i++) {
+        auto *w = qobject_cast<ChatItemWidget *>(ui->chatListWidget->itemWidget(ui->chatListWidget->item(i)));
+        if (w == nullptr) {
+            continue;
+        }
+        const ChatMessage &m = w->message();
+        for (const ContentElement &el: m.elements) {
+            if (el.type == ElementType::Image && el.completed && !el.filePath.isEmpty()
+                && FileUtils::exists(el.filePath) && !images.contains(el.filePath)) {
+                images << el.filePath;
+            }
         }
     }
+    int idx = images.indexOf(path);
+    if (idx < 0) {
+        // 列表里没有（如点击的瞬间尚未入库），至少保证能预览这一张
+        images.prepend(path);
+        idx = 0;
+    }
+    auto *win = new ImagePreview(images, idx, this);
+    win->setAttribute(Qt::WA_DeleteOnClose);
+    win->show();
+    win->raise();
+    win->activateWindow();
+}
+
+ChatItemWidget *LANShareWindow::widgetOfItem(QListWidgetItem *item) const {
+    if (item == nullptr) {
+        return nullptr;
+    }
+    return qobject_cast<ChatItemWidget *>(ui->chatListWidget->itemWidget(item));
+}
+
+void LANShareWindow::buildSelectBar() {
+    // 顶部多选操作栏：平时隐藏。用一层透明外框提供四周留白，
+    // 内层 #selectBar 是圆角工具条本体；局部样式表覆盖全局按钮风格，
+    // 避免继承成大块蓝色按钮。
+    m_selectBar = new QWidget;
+    // 锁定为内容自然高度：默认 Preferred 会与聊天列表平分竖向空间，把列表挤到只剩几条
+    m_selectBar->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    auto *hostLay = new QHBoxLayout(m_selectBar);
+    hostLay->setContentsMargins(10, 6, 10, 2);
+    hostLay->setSpacing(0);
+
+    auto *bar = new QWidget(m_selectBar);
+    bar->setObjectName("selectBar");
+    bar->setStyleSheet(
+            "#selectBar{ background: rgba(128,128,134,30); border-radius: 12px; }"
+            "#selectBar QLabel, #selectBar QCheckBox{ color: palette(text); font-size: 13px; }"
+            "#selectBar QLabel#selCount{"
+            "  background: rgba(128,128,134,55); border-radius: 10px;"
+            "  padding: 2px 10px; font-size: 12px; }"
+            "#selectBar QPushButton{"
+            "  background: transparent; color: palette(text);"
+            "  border: 1px solid rgba(128,128,134,80); border-radius: 15px;"
+            "  padding: 5px 16px; font-size: 13px; }"
+            "#selectBar QPushButton:hover{ background: rgba(128,128,134,45); }"
+            "#selectBar QPushButton:pressed{ background: rgba(128,128,134,80); }"
+            "#selectBar QPushButton#delSelBtn{ color: #E53935; border-color: rgba(229,57,53,110); }"
+            "#selectBar QPushButton#delSelBtn:hover{ background: rgba(229,57,53,30); }"
+            "#selectBar QPushButton#delSelBtn:pressed{ background: rgba(229,57,53,60); }");
+    hostLay->addWidget(bar);
+
+    auto *lay = new QHBoxLayout(bar);
+    lay->setContentsMargins(14, 4, 10, 4);
+    lay->setSpacing(8);
+
+    m_selectAllCheck = new QCheckBox(tr("全选"), bar);
+    m_selectAllCheck->setCursor(Qt::PointingHandCursor);
+    lay->addWidget(m_selectAllCheck);
+
+    m_selectCount = new QLabel(tr("已选 0 项"), bar);
+    m_selectCount->setObjectName("selCount");
+    lay->addWidget(m_selectCount);
+
+    lay->addStretch();
+
+    auto *delBtn = new QPushButton(tr("删除所选"), bar);
+    delBtn->setObjectName("delSelBtn");
+    delBtn->setCursor(Qt::PointingHandCursor);
+    delBtn->setFocusPolicy(Qt::NoFocus);
+    connect(delBtn, &QPushButton::clicked, this, &LANShareWindow::deleteSelectedMessages);
+    lay->addWidget(delBtn);
+
+    auto *exitBtn = new QPushButton(tr("完成"), bar);
+    exitBtn->setObjectName("exitSelBtn");
+    exitBtn->setCursor(Qt::PointingHandCursor);
+    exitBtn->setFocusPolicy(Qt::NoFocus);
+    connect(exitBtn, &QPushButton::clicked, this, &LANShareWindow::exitSelectMode);
+    lay->addWidget(exitBtn);
+
+    connect(m_selectAllCheck, &QCheckBox::toggled, this, &LANShareWindow::onSelectAllToggled);
+
+    m_selectBar->hide();
+    ui->verticalLayout->insertWidget(0, m_selectBar);
+}
+
+void LANShareWindow::enterSelectMode(QListWidgetItem *preselect) {
+    if (m_selectMode) {
+        return;
+    }
+    m_selectMode = true;
+    for (int i = 0; i < ui->chatListWidget->count(); ++i) {
+        if (ChatItemWidget *w = widgetOfItem(ui->chatListWidget->item(i))) {
+            w->setCheckMode(true);
+        }
+    }
+    if (ChatItemWidget *w = widgetOfItem(preselect)) {
+        w->setSelected(true);
+    }
+    m_selectBar->show();
+    refreshSelectionState();
+}
+
+void LANShareWindow::exitSelectMode() {
+    if (!m_selectMode) {
+        return;
+    }
+    m_selectMode = false;
+    {
+        QSignalBlocker blocker(m_selectAllCheck);
+        m_selectAllCheck->setChecked(false);
+    }
+    for (int i = 0; i < ui->chatListWidget->count(); ++i) {
+        if (ChatItemWidget *w = widgetOfItem(ui->chatListWidget->item(i))) {
+            w->setCheckMode(false);
+        }
+    }
+    m_selectBar->hide();
+}
+
+void LANShareWindow::onSelectAllToggled(bool checked) {
+    if (!m_selectMode) {
+        return;
+    }
+    for (int i = 0; i < ui->chatListWidget->count(); ++i) {
+        if (ChatItemWidget *w = widgetOfItem(ui->chatListWidget->item(i))) {
+            w->setSelected(checked);
+        }
+    }
+    refreshSelectionState();
+}
+
+void LANShareWindow::refreshSelectionState() {
+    if (!m_selectMode || m_selectCount == nullptr) {
+        return;
+    }
+    const int total = ui->chatListWidget->count();
+    int sel = 0;
+    for (int i = 0; i < total; ++i) {
+        if (ChatItemWidget *w = widgetOfItem(ui->chatListWidget->item(i))) {
+            if (w->isSelected()) {
+                ++sel;
+            }
+        }
+    }
+    m_selectCount->setText(tr("已选 %1 项").arg(sel));
+    const bool all = total > 0 && sel == total;
+    {
+        QSignalBlocker blocker(m_selectAllCheck);
+        m_selectAllCheck->setChecked(all);
+    }
+}
+
+void LANShareWindow::deleteSelectedMessages() {
+    if (!m_selectMode) {
+        return;
+    }
+    int sel = 0;
+    for (int i = 0; i < ui->chatListWidget->count(); ++i) {
+        if (ChatItemWidget *w = widgetOfItem(ui->chatListWidget->item(i))) {
+            if (w->isSelected()) {
+                ++sel;
+            }
+        }
+    }
+    if (sel == 0) {
+        return;
+    }
+    if (QMessageBox::question(this, tr("删除"),
+                              tr("确定删除选中的 %1 条消息？").arg(sel)) != QMessageBox::Yes) {
+        return;
+    }
+    // 倒序遍历：删除当前项不会影响尚未访问的下标
+    for (int i = ui->chatListWidget->count() - 1; i >= 0; --i) {
+        QListWidgetItem *item = ui->chatListWidget->item(i);
+        ChatItemWidget *w = widgetOfItem(item);
+        if (w == nullptr || !w->isSelected()) {
+            continue;
+        }
+        for (LFile *lFile : w->collectFiles()) {
+            if (lFile != nullptr) {
+                lFile->cancelFileTransfer();
+            }
+        }
+        MessageDB::instance().deleteMessage(w->uuid());
+        ui->chatListWidget->removeItemWidget(item);
+        delete item;
+    }
+    refreshSelectionState();
 }
 
 bool LANShareWindow::getClipboard() {
@@ -451,7 +774,7 @@ bool LANShareWindow::getClipboard() {
         if (!image.isNull()) {
             QByteArray byteArray;
             QBuffer buffer(&byteArray);
-            buffer.open(QIODevice::WriteOnly);
+            buffer.open(QIODevice::WriteOnly); 
             // 将图像转换为 JPEG 格式的字节数组
             image.save(&buffer, "PNG");
             std::vector<LFile *> list;
@@ -502,6 +825,10 @@ bool LANShareWindow::getClipboard() {
 }
 
 void LANShareWindow::keyPressEvent(QKeyEvent *event) {
+    if (m_selectMode && event->key() == Qt::Key_Escape) {
+        exitSelectMode();
+        return;
+    }
     if (event->type() == QEvent::KeyPress) {
         auto *keyEvent = dynamic_cast<QKeyEvent *>(event);
         if (keyEvent->modifiers() & Qt::ControlModifier && keyEvent->key() == Qt::Key_V) {
@@ -586,6 +913,22 @@ void LANShareWindow::updateProgress() {
 void LANShareWindow::receiveFile(LFile *lFile, const QString &uuid, QString message, QString userName, mlong fileSize,
                                  bool left, bool isFile, bool completed) {
     const ChatDirection dir = left ? ChatDirection::Left : ChatDirection::Right;
+    // V5 链路 uuid 取自稳定 fileId：重发同一文件时命中已有消息，
+    // 复用原气泡重置为传输中状态，进度/结果会直接刷回老气泡，
+    // 列表不再堆积重复条目，也不产生主键冲突的新插入
+    for (int i = 0; i < ui->chatListWidget->count(); i++) {
+        auto *existing = qobject_cast<ChatItemWidget *>(ui->chatListWidget->itemWidget(ui->chatListWidget->item(i)));
+        if (existing == nullptr || existing->uuid() != uuid) {
+            continue;
+        }
+        if (existing->restartElement(uuid, lFile, fileSize, QString::fromStdString(Utils::computeSize(fileSize)))) {
+            MessageDB::instance().updateMessage(existing->message());
+            existing->update();
+            ui->chatListWidget->scrollToBottom();
+            return;
+        }
+        break;
+    }
     // 图片文件（发送侧标记 FILE_IMAGE 或按扩展名判定）改用 Image 元素，
     // 消息列表直接展示缩略图；所有传输链路都汇聚到本槽，网络层无需改动
     const bool isImage = (lFile != nullptr && lFile->getFileType() == FILE_IMAGE)
@@ -600,6 +943,13 @@ void LANShareWindow::receiveFile(LFile *lFile, const QString &uuid, QString mess
     if (el != nullptr) {
         el->file = lFile;
         el->sizeStr = QString::fromStdString(Utils::computeSize(fileSize));
+        // 发送方的 LFile 持有源文件路径，创建气泡时就写入并落库：
+        // 若等传输结束才回写，一旦断连/异常退出没有 success 回调，
+        // DB 里 filePath 为空，右键重新发送会误报“文件不存在”；
+        // 接收方此时 path 尚未落地为空串，不受影响
+        if (lFile != nullptr && el->filePath.isEmpty()) {
+            el->filePath = lFile->getPath();
+        }
         if (completed) {
             el->completed = true;
             el->received = true;
@@ -620,7 +970,10 @@ void LANShareWindow::receiveFileProgress(const QString &uuid, int progress) {
     for (int i = 0; i < ui->chatListWidget->count(); i++) {
         auto *message = qobject_cast<ChatItemWidget *>(ui->chatListWidget->itemWidget(ui->chatListWidget->item(i)));
         if (message != nullptr && message->setElementProgress(uuid, progress)) {
-            ui->chatListWidget->viewport()->update();
+            // 只重绘这一条消息：进度回调按数据块频率触发，
+            // 整个 viewport 重绘会在传输期间把滚动拖成连帧丢帧
+            message->update();
+            persistProgressThrottled(message, uuid, progress);
             break;
         }
     }
@@ -636,7 +989,8 @@ void LANShareWindow::receiveFileSuccess(const QString &uuid, bool completed, con
         if (message->setElementResult(uuid, completed, filePath, true)) {
             message->clearFilePointers();
             messageDb.updateMessage(message->message());
-            ui->chatListWidget->viewport()->update();
+            g_lastSavedProgress.remove(uuid);
+            message->update();
             break;
         }
     }
@@ -787,18 +1141,22 @@ void LANShareWindow::createTrayIcon() {
 }
 
 void LANShareWindow::loadData() {
-    if (loadingData) {
+    if (loadingData || noMoreData) {
         return;
     }
     loadingData = true;
     MessageDB &messageDb = MessageDB::instance();
     std::list<ChatMessage> data = messageDb.queryList(pageSize, pageCount++);
+    // 只有“一页都拉不到”才代表更早的消息已穷尽：
+    // 最近一页本来就常不满 pageSize（总数 % pageSize），用“不满一页”判定
+    // 会在首次建页就误锁 noMoreData，导致滚到顶部再也不加载下一页
     if (data.empty()) {
+        noMoreData = true;
         loadingData = false;
         return;
     }
     QScrollBar *bar = ui->chatListWidget->verticalScrollBar();
-    // 先停掉缓动动画：否则动画 tick 会用旧目标位置覆盖下面的恢复（"弹跳"根因）
+    // 先停掉滚动惯性：否则惯性下一帧会用旧目标位置覆盖下面的恢复（"弹跳"根因）
     if (smoothScrollHandler != nullptr) {
         smoothScrollHandler->cancel();
     }
@@ -807,6 +1165,9 @@ void LANShareWindow::loadData() {
     const int valueBefore = bar->value();
     int addedHeight = 0;
     // 批量插入期间冻结重绘：避免每条 insertMessage 都触发全列表重排+重绘
+    // （插入过程中的 valueChanged 由 loadingData 拦住，不会递归建页；
+    // 这里不能 blockSignals，否则 QAbstractScrollArea 也收不到值变化，
+    // 视口不会真正平移，恢复位置后画面会与滚动条错位）
     ui->chatListWidget->setUpdatesEnabled(false);
     for (auto rit = data.rbegin(); rit != data.rend(); ++rit) {
         auto *messageW = new ChatItemWidget(*rit, ui->chatListWidget);
@@ -819,4 +1180,14 @@ void LANShareWindow::loadData() {
     bar->setValue(valueBefore + addedHeight);
     ui->chatListWidget->setUpdatesEnabled(true);
     loadingData = false;
+    // 内容还填不满视口时，根本不会产生“滚到顶部”这个 valueChanged（历史很短
+    // 或单页高度不够），直接补下一页，直到出现可滚动范围或数据穷尽。
+    // addedHeight > 0 是兜底保护：万一某页行高为 0，不能无限自旋补页
+    if (addedHeight > 0 && !noMoreData && bar->maximum() <= bar->minimum()) {
+        pendingLoad = true;
+        QTimer::singleShot(0, this, [this] {
+            pendingLoad = false;
+            loadData();
+        });
+    }
 }

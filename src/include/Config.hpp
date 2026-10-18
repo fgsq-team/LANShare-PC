@@ -116,6 +116,8 @@
 #define OPEN_WEB_SERVICE "open_web_service"
 #define ACCEPT_RECV_FILES "accept_recv_files"
 #define ALLOW_BACKGROUND_RUNNING "allow_background_running"
+// 使用内置预览器打开图片（关闭则用系统默认程序打开）
+#define USE_INTERNAL_IMAGE_PREVIEW "use_internal_image_preview"
 #define FORCE_VERSION "force_version"
 #define THEME "theme"
 // 字体家族
@@ -200,6 +202,8 @@ public:
     bool acceptRecvFiles = true;
     bool allowBackgroundRunning = false;
     bool autoStart = false;
+    // 使用应用内置的图片预览窗口打开图片；false 时调用系统默认程序
+    bool useInternalImagePreview = true;
 
     std::unique_ptr<QSettings> settings;
     QString styleSheet;
@@ -264,6 +268,7 @@ public:
         acceptRecvFiles = settings->value(ACCEPT_RECV_FILES, true).toBool();
         allowBackgroundRunning = settings->value(ALLOW_BACKGROUND_RUNNING, false).toBool();
         autoStart = settings->value(AUTO_START, false).toBool();
+        useInternalImagePreview = settings->value(USE_INTERNAL_IMAGE_PREVIEW, true).toBool();
         messageKey = settings->value(MESSAGE_KEY, DEFAULT_MESSAGE_KEY).toString();
         themeName = settings->value(THEME, "").toString();
         language = settings->value("language", "zh_CN").toString();
@@ -343,8 +348,8 @@ public:
                 textColor = QColor("#1A1C1E");
                 successColor = QColor("#FF8F00");
                 errorColor = QColor("#C62828");
-                chatBubblColorLeft = QBrush(QColor("#FFFFFF"));
-                chatBubblColorRight = QBrush(QColor("#2E7D32"));
+                // 气泡色不再硬编码覆盖：左侧浅绿 surfaceVariant、右侧主色绿
+                // 均由 style_emerald.qss 的 ChatBubbleLeft/Right 解析得到
             } else {
                 textColor = QColor("#1A1C1E");
                 successColor = QColor("#388E3C");

@@ -37,6 +37,7 @@ Setting::Setting(QWidget *parent) : QWidget(parent),
     ui->acceptRecvFiles->setChecked(Config::instance().acceptRecvFiles);
     ui->allowBackgroundRunning->setChecked(Config::instance().allowBackgroundRunning);
     ui->autoStart->setChecked(Config::instance().autoStart);
+    ui->useInternalPreview->setChecked(Config::instance().useInternalImagePreview);
     ui->messageKey->setPlainText(Config::instance().messageKey);
 
     // 设置字体选择框
@@ -177,6 +178,7 @@ void Setting::closeEvent(QCloseEvent *event) {
     Config::instance().acceptRecvFiles = ui->acceptRecvFiles->isChecked();
     Config::instance().allowBackgroundRunning = ui->allowBackgroundRunning->isChecked();
     Config::instance().autoStart = ui->autoStart->isChecked();
+    Config::instance().useInternalImagePreview = ui->useInternalPreview->isChecked();
     
     // 保存语言设置
     if (ui->languageComboBox->currentIndex() == 0) {
@@ -207,6 +209,7 @@ void Setting::closeEvent(QCloseEvent *event) {
     settings->setValue(ACCEPT_RECV_FILES, Config::instance().acceptRecvFiles);
     settings->setValue(ALLOW_BACKGROUND_RUNNING, Config::instance().allowBackgroundRunning);
     settings->setValue(AUTO_START, Config::instance().autoStart);
+    settings->setValue(USE_INTERNAL_IMAGE_PREVIEW, Config::instance().useInternalImagePreview);
     settings->setValue("language", Config::instance().language);
 
 #ifdef Q_OS_WIN

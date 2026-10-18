@@ -241,8 +241,8 @@ BubbleFrame {
 }
 
 ChatBubbleLeft {
-    background-color: #FFFFFF; /* 表面 - 纯白 */
-    border: 1px solid #DCDFE6;
+    background-color: #E2E6F0; /* 表面变体 - 浅灰蓝（Material You surfaceVariant，比列表底 #F0F2F8 更深一档） */
+    border: 1px solid #D5DAE8;
     border-radius: 8px;
 }
 

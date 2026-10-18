@@ -25,8 +25,16 @@ class FileSendV5ProgressCallback : public ProgressCallback {
 public:
     void onStart(FileTransfer *fileTransfer) override {
         auto devName = fileTransfer->fromDevice.getDevName();
+        const auto &toDev = fileTransfer->toDevice;
+        // 消息 uuid 采用协议 fileId（稳定 ID）：重发同一文件到同一设备时 uuid 不变，
+        // 进度/结果回写能命中同一条消息气泡，列表不会堆积重复消息；
+        // fileId 种子不含目标设备，需拼接收端标识，否则同一文件发往
+        // 不同设备会误共用同一个气泡
+        QString devKey = toDev.getUniqueUUid().isEmpty() ? toDev.getDevIp() : toDev.getUniqueUUid();
         for (auto file: fileTransfer->files) {
-            file->setUuid(Utils::getUUID());
+            file->setUuid(file->getFileId().isEmpty()
+                              ? Utils::getUUID()
+                              : (file->getFileId()));
             emit
             LANShareWindow::getInstance()->sigReceiveFile(
                 file,
@@ -114,10 +122,11 @@ void FileSendV5::send(Device fromDevice, Device toDevice, std::unique_ptr<TCPCli
         }
         // 顶层文件 fileId：续传用稳定 id，否则随机
         if (resumeEnabled && !file->getPath().isEmpty()) {
-            QString seed = (file->getFileType() == FILE_FOLDER)
-                           ? (senderUuid + "|folder|" + file->getPath())
-                           : (senderUuid + "|" + file->getPath() + "|" + QString::number(file->getFileSize()));
-            file->setFileId(ResumeStore::stableId(seed));
+            QString fileId = file->getFileId().isEmpty() ? Utils::getUUID() : file->getFileId();
+            // QString seed = (file->getFileType() == FILE_FOLDER)
+            //                ? (senderUuid + "|folder|" + fileId)
+            //                : (senderUuid + "|" + fileId + "|" + QString::number(file->getFileSize()));
+            file->setFileId(fileId);
         } else {
             file->setFileId(Utils::getUUID());
         }
