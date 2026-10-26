@@ -39,7 +39,7 @@ DisableProgramGroupPage=yes
 ;PrivilegesRequired=lowest
 OutputDir=D:\files
 OutputBaseFilename=LANShareSetup
-SetupIconFile=D:\Project\C++\LANShare-PC\img\LANShare.ico
+SetupIconFile=img\LANShare.ico
 SolidCompression=yes
 WizardStyle=modern
 

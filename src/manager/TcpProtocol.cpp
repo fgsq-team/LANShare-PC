@@ -15,6 +15,7 @@
 #include "DataEnc.h"
 #include "CustomDataStream.h"
 #include "MediaIdPathDBUtil.h"
+#include "NetWorldUtils.h"
 #include "mUtils.h"
 #include "Config.hpp"
 
@@ -225,6 +226,46 @@ void TcpProtocol::handleTcp(std::unique_ptr<TCPClient> tcpClient) {
             dataEnc.setCount(syncCount);
             tcpClient->send(dataEnc.getData(), dataEnc.getDataLen());
             qDebug("client close");
+            tcpClient->close();
+        } else if (cmd == FS_ADD_DEVICE) {
+            // 扫码连接：对端(手机)扫描本机二维码后，向本机 TCP 端口发起 FS_ADD_DEVICE。
+            // 扫描端设备信息已在上面通过 addDevice 入库，这里读取其 IPv6 标志，
+            // 选取与扫描端同网段的本机网卡作为应答地址，回送本机设备信息，
+            // 使扫描端把本机加入其设备列表（应答字段顺序须与扫描端解析一致）。
+            const bool isIPv6 = dataDec.getBool();
+            // 扫码添加的对端永久保留：扫码场景下对端的 UDP 心跳可能收不到（如防火墙拦截入站 UDP），
+            // 若仍参与 20s 超时清理，本机很快会遗忘该设备，导致本机->对端发消息时设备已不在列表中。
+            device.setCanRemove(false);
+            lanshare->deviceManager.addDevice(device);
+            Device localDev;
+            bool found = false;
+            const std::vector<Device> mDevices = lanshare->getMDevices();
+            for (const Device &local: mDevices) {
+                const int maskLen = NetWorldUtils::getMaskMapLength(local.getDevNetMask());
+                if (maskLen > 0 && NetWorldUtils::subNet(maskLen, local.getDevIp(), device.getDevIp())) {
+                    localDev = local;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found && !mDevices.empty()) {
+                localDev = mDevices[0];
+                found = true;
+            }
+            if (found) {
+                DataEnc resp(buffer, BUFF_SIZE);
+                resp.setCmd(FS_ADD_DEVICE);
+                resp.putInt(localDev.getDevPort());
+                resp.putString(localDev.getDevIp());
+                resp.putString(localDev.getDevName());
+                resp.putInt(localDev.getDevMode());
+                resp.putString(Config::instance().uniqueUUid + "-" + QString::number(DATA_VERSION));
+                resp.putInt(DATA_VERSION);
+                resp.putBool(isIPv6);
+                tcpClient->send(resp.getData(), resp.getDataLen());
+                TimeTools::sleep_ms(200);
+                qDebug("FS_ADD_DEVICE response to %s", device.getDevName().toUtf8().constData());
+            }
             tcpClient->close();
         }
         delete[] devIp;

@@ -1,6 +1,8 @@
 #include "resource.h"
 
-IDI_LANSHARE_ICON ICON "icon_128x128.ico"
+// 多分辨率图标（16/20/24/32/40/48/64/96/128/256），由 build-tools/svg2icons/generate_icons.py
+// 从矢量母版 icons/lanshare.svg 生成：Shell 在各 DPI 下可直接取到匹配尺寸，无需缩放，因此不发虚
+IDI_LANSHARE_ICON ICON "LANShare.ico"
 
 // 嵌入应用程序清单：声明 PerMonitorV2 DPI 感知，消除 2K/高分屏下系统位图拉伸导致的模糊
 // 24 = RT_MANIFEST，1 = CREATEPROCESS_MANIFEST_RESOURCE_ID（可执行文件）

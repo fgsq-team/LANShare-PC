@@ -24,8 +24,15 @@ DeviceManager::DeviceManager(LANShare *lanshare) : lanshare(lanshare) {}
 void DeviceManager::addDevice(const Device &device) {
     std::mutex &lock = StringLockManager::getStringLock("mMapMutex");
     lock.lock();
-    lanshare->onLineDevices[device.getDevIp().toStdString() + ":" +
-                            std::to_string(device.getDevPort())] = device;
+    const std::string key = device.getDevIp().toStdString() + ":" + std::to_string(device.getDevPort());
+    Device toStore = device;
+    // 扫码添加的设备（canRemove=false）具有粘性：后续若被普通心跳包以新 Device 覆盖，
+    // 仍保留其永久在线标记，避免因未收到心跳而被超时清理。
+    const auto existing = lanshare->onLineDevices.find(key);
+    if (existing != lanshare->onLineDevices.end() && !existing->second.getCanRemove()) {
+        toStore.setCanRemove(false);
+    }
+    lanshare->onLineDevices[key] = toStore;
     lock.unlock();
     LHttpServer::sendDeviceList();
 }
@@ -107,6 +114,11 @@ void DeviceManager::scannDevice() {
             lock.lock();
             std::map<std::string, Device>::iterator iter;
             for (iter = lanshare->onLineDevices.begin(); iter != lanshare->onLineDevices.end();) {
+                // 扫码添加的设备永久保留，不参与心跳超时清理（与手机端 canRemove 语义一致）
+                if (!iter->second.getCanRemove()) {
+                    ++iter;
+                    continue;
+                }
                 mlong devTime = iter->second.getSetTime();
                 mlong currentTime = TimeTools::getCurrentTime();
                 mlong timeOut = currentTime - devTime;

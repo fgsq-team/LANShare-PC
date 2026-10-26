@@ -5,7 +5,7 @@
 #define PATH_E '\\'
 #include <direct.h>
 
-#elif defined(ANDROID) || defined(_ANDROID_)
+#elif defined(ANDROID) || defined(_ANDROID_) || defined(__ANDROID__)
 #define PLATFORM_ANDROID 1 //Android平台
 #define PATH_E '/'
 #include <sys/stat.h>

@@ -44,7 +44,7 @@ void handleReply(QNetworkReply *reply, const QPointer<QWidget> &guard, bool manu
             QMessageBox msgBox(guard.data());
             msgBox.setText(updateContent);
             msgBox.setWindowTitle(UpdateChecker::tr("有新版本更新: ") + versionName);
-            msgBox.setWindowIcon(QIcon(":/img/ic_launcher.png"));
+            msgBox.setWindowIcon(QIcon(":/img/LANShare.ico"));
             msgBox.setStandardButtons(QMessageBox::No | QMessageBox::Yes);
             msgBox.setDefaultButton(QMessageBox::No);
             msgBox.setButtonText(QMessageBox::No,

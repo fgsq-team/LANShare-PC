@@ -63,14 +63,10 @@ if (WIN32)
     #   版 C++ 运行库拉进进程。老 MinGW 不允许「exe 静态内联 + Qt 动态」两份 libstdc++ 混用，混用会造成
     #   new/delete 与堆管理器错配 -> 表现为任意 delete 处的延迟 SIGTRAP 堆损坏。故这里让 exe 复用 Qt5
     #   已加载的共享运行时（不加 -static），进程内只保留一份 C++ 运行库；
-    # - Qt6(GCC 13)容忍静态+动态混用，维持原静态链接策略不变。
-    if (ENABLE_UBSAN OR ENABLE_ASAN)
-        set(CMAKE_EXE_LINKER_FLAGS "")
-    elseif (NOT USE_QT6)
-        set(CMAKE_EXE_LINKER_FLAGS "")
-    else ()
-        set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
-    endif ()
+    # - Qt6(GCC 13)：同理，Qt6*.dll 也动态依赖共享版 libstdc++-6.dll，为彻底消除双运行时风险，
+    #   与 Qt5 保持一致采用动态链接，并由下方 POST_BUILD 从编译器 bin 拷贝同版本运行库 DLL。
+    # Qt5/Qt6 及 sanitizer 构建均动态链接 C++ 运行时，与 QtCore.dll 共用同一份 libstdc++
+    set(CMAKE_EXE_LINKER_FLAGS "")
     if(USE_QT6)
         set(CMAKE_PREFIX_PATH C:/Qt/6.12.0/mingw_64)
     else()
@@ -318,20 +314,19 @@ if (WIN32 AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
         endif ()
     endforeach ()
 
-    # Qt5 构建：exe 已改为动态链接 C++ 运行时（与 Qt5Core 共用同一份），必须随 exe 放一份
+    # Qt5/Qt6 构建：exe 已改为动态链接 C++ 运行时（与 QtCore 共用同一份），必须随 exe 放一份
     # 与编译器版本严格匹配的 MinGW 运行库 DLL。必须从“编译 exe 的那个 MinGW 的 bin”取，
     # 切勿从别的 MinGW 拷（版本不一致会导致 _emutls_v.* 入口点错误或堆损坏延迟 SIGTRAP）。
-    if (NOT USE_QT6)
-        get_filename_component(MINGW_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
-        foreach (_rt libstdc++-6.dll libgcc_s_seh-1.dll libwinpthread-1.dll)
-            if (EXISTS "${MINGW_BIN_DIR}/${_rt}")
-                add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-                        COMMAND ${CMAKE_COMMAND} -E copy
-                        "${MINGW_BIN_DIR}/${_rt}"
-                        "$<TARGET_FILE_DIR:${PROJECT_NAME}>")
-            endif ()
-        endforeach ()
-    endif ()
+    get_filename_component(MINGW_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    foreach (_rt libstdc++-6.dll libgcc_s_seh-1.dll libwinpthread-1.dll)
+        if (EXISTS "${MINGW_BIN_DIR}/${_rt}")
+            add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E echo "Copying MinGW runtime: ${_rt} -> $<TARGET_FILE_DIR:${PROJECT_NAME}>/"
+                    COMMAND ${CMAKE_COMMAND} -E copy
+                    "${MINGW_BIN_DIR}/${_rt}"
+                    "$<TARGET_FILE_DIR:${PROJECT_NAME}>")
+        endif ()
+    endforeach ()
 
     # 拷贝 sanitizer 运行时（位于 MinGW 编译器 bin 目录）
     if (ENABLE_UBSAN OR ENABLE_ASAN)

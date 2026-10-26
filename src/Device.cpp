@@ -101,6 +101,14 @@ void Device::setChargeStatus(mbyte chargeStatus) {
     Device::chargeStatus = chargeStatus;
 }
 
+bool Device::getCanRemove() const {
+    return canRemove;
+}
+
+void Device::setCanRemove(bool canRemove) {
+    Device::canRemove = canRemove;
+}
+
 QJsonObject Device::toJsonObject() {
     QJsonObject jsonObject;
     jsonObject["devName"] = devName;
@@ -113,6 +121,7 @@ QJsonObject Device::toJsonObject() {
     jsonObject["uniqueUUid"] = uniqueUUid;
     jsonObject["batteryLevel"] = batteryLevel;
     jsonObject["chargeStatus"] = chargeStatus;
+    jsonObject["canRemove"] = canRemove;
     return jsonObject;
 }
 
@@ -127,4 +136,5 @@ void Device::fromJsonObject(QJsonObject jsonObject) {
     uniqueUUid = jsonObject["uniqueUUid"].toString();
     batteryLevel = jsonObject["batteryLevel"].toInt();
     chargeStatus = jsonObject["chargeStatus"].toInt();
+    canRemove = jsonObject["canRemove"].toBool(true);
 }

@@ -11,19 +11,26 @@
 /**
  * TCP 客户端类
  * 封装 TCP Socket 的连接、发送、接收等操作
+ * 连接目标同时支持 IPv4、IPv6 与主机名
  * @author fgsq
- * @version 1.0
+ * @version 2.0
  */
 class TCPClient {
 private:
-    int tcp_fd = -1;       // Socket 文件描述符
+    int tcp_fd = -1;       // Socket 文件描述符（Windows 下为 SOCKET 句柄的整型形式）
     QString ip;            // 目标 IP
     int port = -1;         // 目标端口
     bool connected{};      // 连接状态
+
+    /** Socket 句柄是否有效 */
+    bool isFdValid() const;
+
+    /** 以平台句柄（mFd）形式返回当前 fd */
+    mFd fd() const;
 public:
     /**
      * 构造函数（指定 IP 和端口，用于主动连接）
-     * @param ip 目标 IP
+     * @param ip 目标 IP（IPv4 / IPv6 / 主机名）
      * @param port 目标端口
      */
     TCPClient(QString ip, int port);
@@ -135,6 +142,7 @@ public:
 
     /**
      * 获取对端 IP 地址
+     * IPv4 映射地址（::ffff:x.x.x.x）会还原为 IPv4 字符串
      * @return IP 地址字符串
      */
     QString getRemoteIP() const;

@@ -14,13 +14,21 @@
  * 封装 TCP Socket 服务器的绑定、监听、接受连接等操作
  * 同时支持 IPv4 和 IPv6 双栈监听
  * @author fgsq
- * @version 1.0
+ * @version 2.0
  */
 class TCPServer {
 private:
     mFd ipv4_fd = -1;   // IPv4 Socket 文件描述符
     mFd ipv6_fd = -1;   // IPv6 Socket 文件描述符
     int port;           // 监听端口
+
+    /**
+     * 创建、绑定并开始监听指定地址族的 Socket
+     * @param family 地址族（AF_INET / AF_INET6）
+     * @param protocolPort 监听端口
+     * @return 监听中的 Socket，失败返回无效 fd
+     */
+    mFd listenOne(int family, int protocolPort);
 
 public:
     /**
@@ -34,7 +42,8 @@ public:
 
     /**
      * 绑定并监听 IPv4 和 IPv6 端口
-     * @return 成功返回 1，失败返回 -1
+     * 任一协议族不可用时自动降级为单栈监听
+     * @return 成功返回 1，失败返回 0
      */
     int bind();
 
@@ -47,7 +56,7 @@ public:
     /**
      * 接受客户端连接（返回原始 fd）
      * 使用 select 同时监听 IPv4 和 IPv6
-     * @return 新连接的 fd，失败返回 -1
+     * @return 新连接的 fd，失败或已关闭返回无效 fd
      */
     mFd acceptFd();
 

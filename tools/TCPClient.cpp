@@ -5,6 +5,7 @@
 #include "TCPClient.h"
 #include <utility>
 #include <QtGlobal>
+#include <QDebug>
 
 
 /** 默认构造函数 */
@@ -28,53 +29,67 @@ TCPClient::~TCPClient() {
 
 /** 获取对端 IP 地址 */
 QString TCPClient::getRemoteIP() const {
-       sockaddr_storage addr; // 使用 sockaddr_storage 来兼容 IPv4 和 IPv6
+    CLIENT_ADDR addr{};
     socklen_t len = sizeof(addr);
 
-    if (getpeername(tcp_fd, (struct sockaddr *) &addr, &len) == -1) {
-        qDebug("Error getting remote address");
+    if (::getpeername(fd(), (sockaddr *) &addr, &len) == -1) {
+        qDebug("Error getting remote address: %d", netLastError());
         return "";
     }
 
-    char ipStr[INET6_ADDRSTRLEN]; // 用于存放地址字符串
-    if (addr.ss_family == AF_INET) {
-        // IPv4
-        sockaddr_in *addr_in = (struct sockaddr_in *) &addr;
-        inet_ntop(AF_INET, &addr_in->sin_addr, ipStr, sizeof(ipStr));
-    } else if (addr.ss_family == AF_INET6) {
-        // IPv6
-        sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *) &addr;
-        inet_ntop(AF_INET6, &addr_in6->sin6_addr, ipStr, sizeof(ipStr));
-    } else {
+    // 双栈 Socket 上接入的 IPv4 客户端会以 ::ffff:x.x.x.x 形式上报，还原为 IPv4
+    unmapV4(addr);
+    const QString host = addrHost(addr);
+    if (host.isEmpty()) {
         qDebug("Unsupported address family");
-        return "";
     }
-
-    return ipStr; // 返回 IP 地址字符串
+    return host;
 }
 
 /** 发起 TCP 连接 */
 bool TCPClient::connect() {
-    tcp_fd = (int) socket(AF_INET, SOCK_STREAM, 0);
-    struct sockaddr_in servAddr{};
-    memset(&servAddr, 0, sizeof(servAddr));
-    servAddr.sin_family = AF_INET;
-    servAddr.sin_addr.s_addr = inet_addr(ip.toStdString().c_str());
-    servAddr.sin_port = htons(port);
-    if (::connect(tcp_fd, (struct sockaddr *) &servAddr, sizeof(servAddr)) == -1) {
-        qDebug("connection failed");
+    if (!netInit()) {
+        qDebug("init wsa fail\n");
         setConnected(false);
         return false;
-    } else {
-        qDebug("connection succeed");
-        setConnected(true);
-        return true;
     }
+    // 重连前先释放旧句柄
+    if (isFdValid()) {
+        netClose(fd());
+        tcp_fd = -1;
+    }
+    /* 目标地址支持 IPv4、IPv6（可带 %区域索引）与主机名 */
+    CLIENT_ADDR servAddr{};
+    socklen_t addrLen = 0;
+    if (!resolveAddr(ip, port, servAddr, addrLen)) {
+        qDebug("resolve address failed: %s", ip.toUtf8().constData());
+        setConnected(false);
+        return false;
+    }
+    mFd sock = ::socket(servAddr.ss_family, SOCK_STREAM, 0);
+    if (!fdValid(sock)) {
+        qDebug("create socket failed: %d", netLastError());
+        setConnected(false);
+        return false;
+    }
+    if (::connect(sock, (sockaddr *) &servAddr, addrLen) == -1) {
+        qDebug("connection failed: %s", ip.toUtf8().constData());
+        netClose(sock);
+        setConnected(false);
+        return false;
+    }
+    qDebug("connection succeed");
+    tcp_fd = intFromFd(sock);
+    setConnected(true);
+    return true;
 }
 
 /** 发送数据 */
 int TCPClient::send(const void *buff, int len, int flag) const {
-    return ::send(tcp_fd, static_cast<const char *>(buff), len, flag);
+    if (!isFdValid()) {
+        return -1;
+    }
+    return (int) ::send(fd(), static_cast<const char *>(buff), len, flag);
 }
 
 /** 发送单字节 */
@@ -94,7 +109,10 @@ int TCPClient::read() const {
 
 /** 接收数据 */
 int TCPClient::recv(void *buff, int len, int flag) const {
-    return ::recv(tcp_fd, static_cast<char *>(buff), len, flag);
+    if (!isFdValid()) {
+        return -1;
+    }
+    return (int) ::recv(fd(), static_cast<char *>(buff), len, flag);
 }
 
 /** 完整接收指定长度数据 */
@@ -109,12 +127,12 @@ int TCPClient::recvo(void *buff, int index, size_t len, int flag) const {
     int off = index;
     size_t size = len;
     while (size > 0) {
-        int i = ::recv(tcp_fd, reinterpret_cast<char *>(&tempBuff[off]), (int) size, flag);
+        int i = this->recv(reinterpret_cast<char *>(&tempBuff[off]), (int) size, flag);
         if (i == 0) {
             return i;
         } else if (i == -1) {
             // 数据接收错误，可能客户端断开连接
-            qDebug("error during recvall: %d\n", (int) i);
+            qDebug("error during recvall: %d\n", netLastError());
             return i;
         }
         totalRecv += i;
@@ -127,16 +145,28 @@ int TCPClient::recvo(void *buff, int index, size_t len, int flag) const {
 
 /** 关闭连接 */
 int TCPClient::close()  {
-#if defined(PLATFORM_WINDOWS)
-    return ::closesocket(tcp_fd);
-#elif defined(PLATFORM_ANDROID) || defined(PLATFORM_LINUX) || defined(PLATFORM_MACOS)
-    return ::close(tcp_fd);
-#endif
+    if (!isFdValid()) {
+        return 0;
+    }
+    int ret = netClose(fd());
+    tcp_fd = -1;
+    setConnected(false);
+    return ret;
 }
 
 /** 获取 Socket fd */
 int TCPClient::getFd() const {
     return tcp_fd;
+}
+
+/** Socket 句柄是否有效 */
+bool TCPClient::isFdValid() const {
+    return fdValid(fd());
+}
+
+/** 以平台句柄形式返回当前 fd */
+mFd TCPClient::fd() const {
+    return fdFromInt(tcp_fd);
 }
 
 
@@ -149,7 +179,8 @@ void TCPClient::setFd(int fd) {
 mlong TCPClient::skip(mlong l) const {
     char buffer[1024];
     size_t totalBytesSkipped = 0;
-    ssize_t bytesRead;
+    // 使用 int 而非 ssize_t，避开 MSVC 等平台未定义 ssize_t 的兼容问题
+    int bytesRead;
     while (l > 0) {
         bytesRead = recv(buffer, qMin((int) sizeof(buffer), (int) l));
         if (bytesRead == -1) {

@@ -330,6 +330,7 @@
     </widget>
     <addaction name="setting"/>
     <addaction name="menumessage"/>
+    <addaction name="actionScanConnect"/>
    </widget>
    <widget class="QMenu" name="menu_2">
     <property name="title">
@@ -363,6 +364,11 @@
   <action name="actionAbout">
    <property name="text">
     <string>关于</string>
+   </property>
+  </action>
+  <action name="actionScanConnect">
+   <property name="text">
+    <string>扫码连接</string>
    </property>
   </action>
  </widget>

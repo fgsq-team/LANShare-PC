@@ -36,6 +36,7 @@
 #include "FileUtils.h"
 #include "UpdateChecker.h"
 #include "ImagePreview.h"
+#include "QRConnectDialog.h"
 
 LANShareWindow *lanShareWindow = nullptr;
 
@@ -95,7 +96,9 @@ LANShareWindow::LANShareWindow(QWidget *parent) : QMainWindow(parent),
     buildSelectBar();
     ui->webService->setChecked(Config::instance().webService);
     setAcceptDrops(true);
-    setWindowIcon(QIcon(":/img/ic_launcher.png"));
+    // 窗口/托盘图标统一用多分辨率 .ico（16~256）：Qt 按当前 DPI 直接取原生尺寸，
+    // 不再由单张位图缩放，小图标（标题栏 16、托盘 16/24）不会发虚
+    setWindowIcon(QIcon(":/img/LANShare.ico"));
     setMinimumSize({600, 600});
     qRegisterMetaType<LFile *>("LFile");
     qRegisterMetaType<mlong>("mlong");
@@ -346,6 +349,12 @@ void LANShareWindow::on_actionAbout_triggered() {
     about->show();
 }
 
+void LANShareWindow::on_actionScanConnect_triggered() {
+    auto *dialog = new QRConnectDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
+}
+
 void LANShareWindow::sendMessage(bool isClip) {
     QString msg = ui->textEdit->toPlainText();
     if (msg.isEmpty()) {
@@ -473,7 +482,7 @@ void LANShareWindow::newWebClient(QString token, QString ip) {
     QMessageBox msgBox(this);
     msgBox.setText("是否同意网页客户端：【" + ip + "】的访问请求？");
     msgBox.setWindowTitle("有新的客户端访问");
-    msgBox.setWindowIcon(QIcon(":/img/ic_launcher.png"));
+    msgBox.setWindowIcon(QIcon(":/img/LANShare.ico"));
     msgBox.setStandardButtons(QMessageBox::No | QMessageBox::Yes);
     msgBox.setDefaultButton(QMessageBox::No);
     msgBox.setWindowFlags(msgBox.windowFlags() | Qt::WindowStaysOnTopHint); // 设置窗口始终显示在顶层
@@ -1052,7 +1061,7 @@ void LANShareWindow::requestRecvFiles(AcceptFiles *acceptFiles) {
     QMessageBox msgBox(this);
     msgBox.setText(QString(tr("是否接收设备：【%1】发送的%2个文件")).arg(acceptFiles->device.getDevName(), QString::number(acceptFiles->files.size())));
     msgBox.setWindowTitle(tr("接收文件请求"));
-    msgBox.setWindowIcon(QIcon(":/img/ic_launcher.png"));
+    msgBox.setWindowIcon(QIcon(":/img/LANShare.ico"));
     msgBox.setStandardButtons(QMessageBox::No | QMessageBox::Yes);
     msgBox.setDefaultButton(QMessageBox::No);
     msgBox.setWindowFlags(msgBox.windowFlags() | Qt::WindowStaysOnTopHint); // 设置窗口始终显示在顶层
@@ -1113,7 +1122,7 @@ void LANShareWindow::createTrayIcon() {
     }
     // 创建系统托盘图标
     trayIcon = new QSystemTrayIcon(this);
-    trayIcon->setIcon(QIcon(":/img/ic_launcher.png"));
+    trayIcon->setIcon(QIcon(":/img/LANShare.ico"));
     qDebug() << "Tray icon created";
     // 创建托盘菜单
     auto *trayMenu = new QMenu();

@@ -33,6 +33,7 @@ private:
     int dataVersion = 0; // 通讯协议版本
     int batteryLevel = -1; //
     mbyte chargeStatus = -1;
+    bool canRemove = true; // 是否可被心跳超时清理（扫码添加的设备为 false，永久保留）
 
 public:
     const QString &getUniqueUUid() const;
@@ -82,6 +83,10 @@ public:
     mbyte getChargeStatus() const;
 
     void setChargeStatus(mbyte chargeStatus);
+
+    bool getCanRemove() const;
+
+    void setCanRemove(bool canRemove);
 
     QJsonObject toJsonObject();
 

@@ -28,7 +28,7 @@ UdpProtocol::UdpProtocol(LANShare *lanshare) : lanshare(lanshare) {}
  */
 void UdpProtocol::handleUdp() {
     auto *buffer = new mbyte[4096];
-    sockaddr_in clientAddr{};
+    CLIENT_ADDR clientAddr{};
 flag:
     while (lanshare->isRunning) {
         int len = lanshare->udpServer->recv(&clientAddr, buffer, 4096);
