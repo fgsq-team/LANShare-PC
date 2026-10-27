@@ -6,7 +6,7 @@
 #define LANSHARE_WIN_CONFIG_H
 
 #include "Type.h"
-#include "qaesencryption.h"
+#include "QAESEncryption.h"
 #include <QUuid>
 
 #define NEW_VERSION_4  -2 // 新版本（V4）

@@ -331,6 +331,7 @@
     <addaction name="setting"/>
     <addaction name="menumessage"/>
     <addaction name="actionScanConnect"/>
+    <addaction name="actionWebQrCode"/>
    </widget>
    <widget class="QMenu" name="menu_2">
     <property name="title">
@@ -369,6 +370,11 @@
   <action name="actionScanConnect">
    <property name="text">
     <string>扫码连接</string>
+   </property>
+  </action>
+  <action name="actionWebQrCode">
+   <property name="text">
+    <string>网页二维码</string>
    </property>
   </action>
  </widget>

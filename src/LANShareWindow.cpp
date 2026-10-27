@@ -37,6 +37,7 @@
 #include "UpdateChecker.h"
 #include "ImagePreview.h"
 #include "QRConnectDialog.h"
+#include "WebUrlQRDialog.h"
 
 LANShareWindow *lanShareWindow = nullptr;
 
@@ -351,6 +352,12 @@ void LANShareWindow::on_actionAbout_triggered() {
 
 void LANShareWindow::on_actionScanConnect_triggered() {
     auto *dialog = new QRConnectDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
+}
+
+void LANShareWindow::on_actionWebQrCode_triggered() {
+    auto *dialog = new WebUrlQRDialog(this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->show();
 }

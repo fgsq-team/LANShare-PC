@@ -197,6 +197,9 @@ public slots:
     // 打开“扫码连接”二维码对话框，供手机扫描后与本机互加设备
     void on_actionScanConnect_triggered();
 
+    // 打开“网页二维码”对话框，供手机扫码访问本机网页版地址
+    void on_actionWebQrCode_triggered();
+
     void on_chatListWidget_itemDoubleClicked(QListWidgetItem *item);
 
     void on_chatListWidget_itemClicked(QListWidgetItem *item);

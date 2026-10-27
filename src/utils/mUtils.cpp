@@ -4,7 +4,7 @@
 
 #include "mUtils.h"
 #include "Type.h"
-#include "qaesencryption.h"
+#include "QAESEncryption.h"
 #include "Config.hpp"
 #include <QString>
 #include <QDir>
